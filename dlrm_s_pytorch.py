@@ -771,6 +771,7 @@ def inference(
     use_gpu,
     log_iter=-1,
 ):
+    print("Starting inference", flush=True)
     test_accu = 0
     test_samp = 0
 
@@ -901,6 +902,7 @@ def inference(
             ),
             flush=True,
         )
+    print("Returning from inference", flush=True)
     return model_metrics_dict, is_best
 
 
@@ -1028,6 +1030,8 @@ def run():
     global writer
     args = parser.parse_args()
 
+    print(f"RUNNING WITH inference_only = {args.inference_only}", flush=True)
+
     if args.dataset_multiprocessing:
         assert float(sys.version[:3]) > 3.7, (
             "The dataset_multiprocessing "
@@ -1057,7 +1061,7 @@ def run():
             )
         if args.use_gpu:
             sys.exit("ERROR: 4 and 8-bit quantization on GPU is not supported")
-
+    print(f"basic setup", flush=True)
     ### some basic setup ###
     np.random.seed(args.numpy_rand_seed)
     np.set_printoptions(precision=args.print_precision)
@@ -1095,7 +1099,7 @@ def run():
     ### prepare training data ###
     ln_bot = np.fromstring(args.arch_mlp_bot, dtype=int, sep="-")
     # input data
-
+    print(f"prepping input data", flush=True)
     if args.mlperf_logging:
         mlperf_logger.barrier()
         mlperf_logger.log_end(key=mlperf_logger.constants.INIT_STOP)
@@ -1170,7 +1174,7 @@ def run():
         )
     arch_mlp_top_adjusted = str(num_int) + "-" + args.arch_mlp_top
     ln_top = np.fromstring(arch_mlp_top_adjusted, dtype=int, sep="-")
-
+    print(f"sanity check", flush=True)
     # sanity check: feature sizes and mlp dimensions must match
     if m_den != ln_bot[0]:
         sys.exit(
@@ -1284,6 +1288,7 @@ def run():
     # the weights we need to start from the same random seed.
     # np.random.seed(args.numpy_rand_seed)
     global dlrm
+    print(f"constructing model", flush=True)
     dlrm = DLRM_Net(
         m_spa,
         ln_emb,
@@ -1377,7 +1382,7 @@ def run():
         )
 
     ### main loop ###
-
+    print(f"starting main loop", flush=True)
     # training or inference
     best_acc_test = 0
     best_auc_test = 0
@@ -1399,7 +1404,7 @@ def run():
 
     # Load model is specified
     if not (args.load_model == ""):
-        print("Loading saved model {}".format(args.load_model))
+        print("Loading saved model {}".format(args.load_model), flush=True)
         if use_gpu:
             if dlrm.ndevices > 1:
                 # NOTE: when targeting inference on multiple GPUs,
@@ -1416,7 +1421,10 @@ def run():
                 )
         else:
             # when targeting inference on CPU
+            print("targeting inference on cpu", flush=True)
             ld_model = torch.load(args.load_model, map_location=torch.device("cpu"))
+            print("finished torch load", flush=True)
+        print("loading state dict", flush=True)
         dlrm.load_state_dict(ld_model["state_dict"])
         ld_j = ld_model["iter"]
         ld_k = ld_model["epoch"]
@@ -1456,7 +1464,8 @@ def run():
             )
         else:
             print("Testing state: accuracy = {:3.3f} %".format(ld_acc_test * 100))
-
+    
+    print("entering inference only", flush=True)
     if args.inference_only:
         # Currently only dynamic quantization with INT8 and FP16 weights are
         # supported for MLPs and INT4 and INT8 weights for EmbeddingBag
@@ -1484,7 +1493,7 @@ def run():
             dlrm.quantize_embedding(args.quantize_emb_with_bit)
             # print(dlrm)
 
-    print("time/loss/accuracy (if enabled):")
+    print("time/loss/accuracy (if enabled):", flush=True)
 
     if args.mlperf_logging:
         # LR is logged twice for now because of a compliance checker bug
@@ -1782,7 +1791,7 @@ def run():
                     },
                 )
         else:
-            print("Testing for inference only")
+            print("Testing for inference only", flush=True)
             inference(
                 args,
                 dlrm,
