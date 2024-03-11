@@ -55,9 +55,6 @@
 #define BITMAP_CHUNK_SIZE	8
 #endif
 
-// pipe for dlrm embedding lookup
-#define PIPE_PATH "/home/gjia/dpipe"
-
 #ifndef PAGE_OFFSET
 #define PAGE_OFFSET		0xffff880000000000LLU
 #endif
