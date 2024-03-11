@@ -252,11 +252,11 @@ class DLRM_Net(nn.Module):
 
     def __init__(
         self,
-        pipe_path,
         m_spa=None,
         ln_emb=None,
         ln_bot=None,
         ln_top=None,
+        pipe_path=None,
         arch_interaction_op=None,
         arch_interaction_itself=False,
         sigmoid_bot=-1,
