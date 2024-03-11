@@ -257,11 +257,9 @@ void signal_handler(int signal_num)
 {
     if (signal_num == SIGUSR1) {
         if (in_lookup == 0) {
-			printf("Received signal: in lookup\n");
 			in_lookup = 1;
             num_lookups++;
         } else {
-			printf("Received signal: exited lookup\n");
             in_lookup = 0;
         }
     }
@@ -270,7 +268,7 @@ void signal_handler(int signal_num)
 int main(int argc, char *argv[])
 {
 	pid_t pid, ppid;
-	int status, err = 0, num_lookups = 0;
+	int status, err = 0;
 	double mbytes;
 	static struct timeval ts1, ts2, ts3, ts4;
 	unsigned long long set_us, read_us, dur_us, slp_us, est_us;
