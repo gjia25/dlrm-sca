@@ -16,6 +16,7 @@ import json
 import sys
 import time
 import os
+import csv
 
 # onnx
 # The onnx import causes deprecation warnings every time workers
@@ -372,7 +373,16 @@ class DLRM_Net(nn.Module):
         #   corresponding to a single lookup
         # 2. for each embedding the lookups are further organized into a batch
         # 3. for a list of embedding tables there is a list of batched lookups
-
+        
+        with open("lS_i.csv", "w", newline="") as csvfile:
+            writer = csv.writer(csvfile)
+            for tensor in sparse_index_group_batch:
+                writer.writerow(tensor.tolist())
+        with open("lS_o.csv", "w", newline="") as csvfile:
+            writer = csv.writer(csvfile)
+            for tensor in sparse_offset_group_batch:
+                writer.writerow(tensor.tolist())
+        
         ly = []
         for k, sparse_index_group_batch in enumerate(lS_i):
             sparse_offset_group_batch = lS_o[k]
@@ -411,7 +421,7 @@ class DLRM_Net(nn.Module):
                 ly.append(QV)
             else:
                 with open(self.pipe_path, 'w') as pipe:
-                    pipe.write(f"lookup_bgn {k} {sparse_index_group_batch} {sparse_offset_group_batch}")
+                    pipe.write(f"lookup_bgn")
                 E = emb_l[k]
                 V = E(
                     sparse_index_group_batch,
@@ -874,7 +884,7 @@ def run():
         description="Train Deep Learning Recommendation Model (DLRM)"
     )
     # NEW: pipe path
-    parser.add_argument("--pipe_path", type=str, default="/tmp/dlrm")
+    parser.add_argument("--pipe_path", type=str, default="/home/gjia/dpipe")
     # model related parameters
     parser.add_argument("--arch-sparse-feature-size", type=int, default=16)
     parser.add_argument(
