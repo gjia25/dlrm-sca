@@ -30,6 +30,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
+#include <signal.h>
 #include <unistd.h>
 #include <sys/user.h>
 #include <sys/types.h>
@@ -69,6 +70,9 @@ char *g_idlepath = "/sys/kernel/mm/page_idle/bitmap";
 unsigned long long *g_idlebuf;
 unsigned long long g_idlebufsize;
 static struct timeval ts0;
+
+int in_lookup = 0;
+int num_lookups = 0;
 
 /*
  * This code must operate on bits in the pageidle bitmap and process pagemap.
@@ -251,9 +255,24 @@ int loadidlemap()
 	return 0;
 }
 
+
+void signal_handler(int signal_num)
+{
+    if (signal_num == SIGUSR1) {
+        if (in_lookup == 0) {
+			printf("Received signal: in lookup\n");
+			in_lookup = 1;
+            num_lookups++;
+        } else {
+			printf("Received signal: exited lookup\n");
+            in_lookup = 0;
+        }
+    }
+}
+
 int main(int argc, char *argv[])
 {
-	pid_t pid;
+	pid_t pid, ppid;
 	int status, err = 0, num_lookups = 0;
 	double mbytes;
 	static struct timeval ts1, ts2, ts3, ts4;
@@ -265,10 +284,7 @@ int main(int argc, char *argv[])
 		exit(0);
 	}
     printf("RUNNING: %s %s\n", argv[1], argv[2]);
-	
-	// Create a named pipe (FIFO)
-    mkfifo(PIPE_PATH, 0666);
-	printf("made pipe: %s\n", PIPE_PATH);
+	ppid = getpid();
 
 	gettimeofday(&ts0, NULL);
 	pid = fork();
@@ -288,8 +304,9 @@ int main(int argc, char *argv[])
 			perror("sched_setaffinity");
 			exit(EXIT_FAILURE);
 		}
-
-		execlp(argv[1], argv[1], argv[2], NULL);
+		char pid_arg[20];
+		sprintf(pid_arg, "--parent-pid=%d", ppid);
+		execlp(argv[1], argv[1], argv[2], pid_arg, NULL);
 		// If execlp returns, it means it failed
 		perror("execlp");
 		exit(EXIT_FAILURE);
@@ -317,37 +334,16 @@ int main(int argc, char *argv[])
 			goto out;
 		}
 		
-		char message[100];
-		int SIGNAL_LEN = 10;
-		int in_lookup = 0;
+		signal(SIGUSR1, signal_handler);
 		while (waitpid(pid, NULL, WNOHANG) == 0) {
 			// set idle flags
 			gettimeofday(&ts1, NULL);
 			setidlemap();
 			
-			// Open the named pipe for reading
-			int pipe_fd = open(PIPE_PATH, O_RDONLY);
-			if (pipe_fd == -1) {
-				perror("open");
-				exit(EXIT_FAILURE);
-			}
-			// Read from pipe
-			ssize_t bytes_read = read(pipe_fd, message, sizeof(message));
-			if (bytes_read == -1) {
-				perror("read");
-				exit(EXIT_FAILURE);
-			} else if ((bytes_read == 0 && !in_lookup) || strncmp(message, "lookup_end", SIGNAL_LEN) == 0) {
+			if (in_lookup == 0) {
 				usleep(100);
 				continue; // skip page table walk
-			} else if (strncmp(message, "lookup_bgn", SIGNAL_LEN) == 0) {
-				printf("Received signal: %s\n", message);
-				memset(message, 0, sizeof(message)); // clear buffer
-				in_lookup = 1;
-				num_lookups++;
-			} else {
-				printf("Invalid message: %s\n", message);
 			}
-			close(pipe_fd);
 
 			// sleep
 			// gettimeofday(&ts2, NULL);

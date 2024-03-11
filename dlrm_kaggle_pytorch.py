@@ -16,6 +16,7 @@ import json
 import sys
 import time
 import os
+import signal
 import csv
 
 # onnx
@@ -257,7 +258,7 @@ class DLRM_Net(nn.Module):
         ln_emb=None,
         ln_bot=None,
         ln_top=None,
-        pipe_path=None,
+        parent_pid=None,
         arch_interaction_op=None,
         arch_interaction_itself=False,
         sigmoid_bot=-1,
@@ -285,7 +286,7 @@ class DLRM_Net(nn.Module):
         ):
 
             # save arguments
-            self.pipe_path = pipe_path
+            self.parent_pid = parent_pid
             self.ndevices = ndevices
             self.output_d = 0
             self.parallel_model_batch_size = -1
@@ -420,19 +421,15 @@ class DLRM_Net(nn.Module):
 
                 ly.append(QV)
             else:
-                with open(self.pipe_path, 'w') as pipe:
-                    pipe.write(f"lookup_bgn")
+                os.kill(self.parent_pid, signal.SIGUSR1)
                 E = emb_l[k]
                 V = E(
                     sparse_index_group_batch,
                     sparse_offset_group_batch,
                     per_sample_weights=per_sample_weights,
                 )
-
+                os.kill(self.parent_pid, signal.SIGUSR1)
                 ly.append(V)
-
-                with open(self.pipe_path, 'w') as pipe:
-                    pipe.write("lookup_end")
                 time.sleep(0.1) # sleep for 0.1 seconds
 
         # print(ly)
@@ -883,8 +880,8 @@ def run():
     parser = argparse.ArgumentParser(
         description="Train Deep Learning Recommendation Model (DLRM)"
     )
-    # NEW: pipe path
-    parser.add_argument("--pipe_path", type=str, default="/home/gjia/dpipe")
+    # NEW: parent pid
+    parser.add_argument("--parent-pid", type=int)
     # model related parameters
     parser.add_argument("--arch-sparse-feature-size", type=int, default=16)
     parser.add_argument(
@@ -1265,7 +1262,7 @@ def run():
         ln_emb,
         ln_bot,
         ln_top,
-        pipe_path=args.pipe_path,
+        parent_pid=args.parent_pid,
         arch_interaction_op=args.arch_interaction_op,
         arch_interaction_itself=args.arch_interaction_itself,
         sigmoid_bot=-1,
