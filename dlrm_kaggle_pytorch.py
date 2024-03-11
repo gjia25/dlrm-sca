@@ -375,9 +375,6 @@ class DLRM_Net(nn.Module):
 
         ly = []
         for k, sparse_index_group_batch in enumerate(lS_i):
-            with open(self.pipe_path, 'w') as pipe:
-                pipe.write("lookup_start")
-
             sparse_offset_group_batch = lS_o[k]
             
             # embedding lookup
@@ -413,6 +410,8 @@ class DLRM_Net(nn.Module):
 
                 ly.append(QV)
             else:
+                with open(self.pipe_path, 'w') as pipe:
+                    pipe.write(f"lookup_bgn {k} {sparse_index_group_batch} {sparse_offset_group_batch}")
                 E = emb_l[k]
                 V = E(
                     sparse_index_group_batch,
@@ -421,11 +420,10 @@ class DLRM_Net(nn.Module):
                 )
 
                 ly.append(V)
-            
-            with open(self.pipe_path, 'w') as pipe:
-                pipe.write("lookup_end")
-            
-            time.sleep(0.5) # sleep for 0.5 seconds
+
+                with open(self.pipe_path, 'w') as pipe:
+                    pipe.write("lookup_end")
+                time.sleep(0.1) # sleep for 0.1 seconds
 
         # print(ly)
         return ly
@@ -1384,7 +1382,7 @@ def run():
                     # map_location=lambda storage, loc: storage.cuda(0)
                 )
         else:
-            # when targeting inference on CPU
+            # HERE: targeting inference on CPU
             ld_model = torch.load(args.load_model, map_location=torch.device("cpu"))
         dlrm.load_state_dict(ld_model["state_dict"])
         ld_j = ld_model["iter"]
@@ -1403,7 +1401,7 @@ def run():
             total_loss = ld_total_loss
             skip_upto_epoch = ld_k  # epochs
             skip_upto_batch = ld_j  # batches
-        else:
+        else: # HERE: inference only
             args.print_freq = ld_nbatches
             args.test_freq = 0
 
@@ -1426,7 +1424,7 @@ def run():
         else:
             print("Testing state: accuracy = {:3.3f} %".format(ld_acc_test * 100))
 
-    if args.inference_only:
+    if args.inference_only: # HERE
         # Currently only dynamic quantization with INT8 and FP16 weights are
         # supported for MLPs and INT4 and INT8 weights for EmbeddingBag
         # post-training quantization during the inference.
