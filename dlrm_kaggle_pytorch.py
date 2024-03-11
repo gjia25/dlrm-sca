@@ -876,7 +876,7 @@ def run():
         description="Train Deep Learning Recommendation Model (DLRM)"
     )
     # NEW: pipe path
-    parser.add_argument("pipe_path", type=str, default="/tmp/dlrm_pipe")
+    parser.add_argument("--pipe_path", type=str, default="/tmp/dlrm")
     # model related parameters
     parser.add_argument("--arch-sparse-feature-size", type=int, default=16)
     parser.add_argument(
@@ -1257,6 +1257,7 @@ def run():
         ln_emb,
         ln_bot,
         ln_top,
+        pipe_path=args.pipe_path,
         arch_interaction_op=args.arch_interaction_op,
         arch_interaction_itself=args.arch_interaction_itself,
         sigmoid_bot=-1,
