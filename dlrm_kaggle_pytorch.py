@@ -376,12 +376,12 @@ class DLRM_Net(nn.Module):
         
         with open("lS_i.csv", "w", newline="") as csvfile:
             writer = csv.writer(csvfile)
-            for tensor in sparse_index_group_batch:
-                writer.writerow(tensor.tolist())
+            for sparse_index_group_batch in lS_i:
+                writer.writerow(sparse_index_group_batch.tolist())
         with open("lS_o.csv", "w", newline="") as csvfile:
             writer = csv.writer(csvfile)
-            for tensor in sparse_offset_group_batch:
-                writer.writerow(tensor.tolist())
+            for sparse_offset_group_batch in lS_o:
+                writer.writerow(sparse_index_group_batch.tolist())
         
         ly = []
         for k, sparse_index_group_batch in enumerate(lS_i):
