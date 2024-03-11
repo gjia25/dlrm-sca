@@ -431,7 +431,6 @@ class DLRM_Net(nn.Module):
                 )
                 global global_num_lookups
                 global_num_lookups += 1
-                print(f"DLRM: num_lookups = {global_num_lookups}", flush=True)
                 os.kill(self.parent_pid, signal.SIGUSR1)
                 ly.append(V)
                 time.sleep(0.1) # sleep for 0.1 seconds
