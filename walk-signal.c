@@ -371,8 +371,8 @@ int main(int argc, char *argv[])
 			}
 		}
 
-		printf("Child process exited with status %d\n", status);
-
+		printf("Parent: Child process exited with status %d\n", status);
+		printf("Parent: num_lookups = %d\n", num_lookups);
 		out:
 		if (output_file != NULL) {
 			fclose(output_file);

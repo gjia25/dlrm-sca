@@ -78,6 +78,7 @@ with warnings.catch_warnings():
 
 exc = getattr(builtins, "IOError", "FileNotFoundError")
 
+global_num_lookups = 0
 
 def time_wrap(use_gpu):
     if use_gpu:
@@ -428,6 +429,7 @@ class DLRM_Net(nn.Module):
                     sparse_offset_group_batch,
                     per_sample_weights=per_sample_weights,
                 )
+                global_num_lookups += 1
                 os.kill(self.parent_pid, signal.SIGUSR1)
                 ly.append(V)
                 time.sleep(0.1) # sleep for 0.1 seconds
@@ -1881,3 +1883,4 @@ def run():
 
 if __name__ == "__main__":
     run()
+    print(f"DLRM: num_lookups = {global_num_lookups}")
