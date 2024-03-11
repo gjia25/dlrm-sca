@@ -429,6 +429,7 @@ class DLRM_Net(nn.Module):
                     sparse_offset_group_batch,
                     per_sample_weights=per_sample_weights,
                 )
+                global global_num_lookups
                 global_num_lookups += 1
                 print(f"DLRM: num_lookups = {global_num_lookups}", flush=True)
                 os.kill(self.parent_pid, signal.SIGUSR1)
