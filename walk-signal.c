@@ -336,7 +336,6 @@ int main(int argc, char *argv[])
 			setidlemap();
 			
 			if (in_lookup == 0) {
-				usleep(100);
 				continue; // skip page table walk
 			}
 
