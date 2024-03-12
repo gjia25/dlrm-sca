@@ -423,6 +423,8 @@ class DLRM_Net(nn.Module):
                 ly.append(QV)
             else:
                 os.kill(self.parent_pid, signal.SIGUSR1)
+                time.sleep(0.5)
+
                 E = emb_l[k]
                 V = E(
                     sparse_index_group_batch,
@@ -431,8 +433,10 @@ class DLRM_Net(nn.Module):
                 )
                 global global_num_lookups
                 global_num_lookups += 1
-                time.sleep(1) # sleep for 1 second
+                
+                time.sleep(0.5)
                 os.kill(self.parent_pid, signal.SIGUSR1)
+                
                 ly.append(V)
 
         # print(ly)
@@ -760,6 +764,7 @@ def inference(
         X_test, lS_o_test, lS_i_test, T_test, W_test, CBPP_test = unpack_batch(
             testBatch
         )
+        print(f"Testing batch {i}: X_test = {X_test}", flush=True)
 
         # Skip the batch if batch size not multiple of total ranks
         if ext_dist.my_size > 1 and X_test.size(0) % ext_dist.my_size != 0:
@@ -917,7 +922,7 @@ def run():
     parser.add_argument("--round-targets", type=bool, default=True)
     # data
     parser.add_argument("--data-size", type=int, default=1)
-    parser.add_argument("--num-batches", type=int, default=0)
+    parser.add_argument("--num-batches", type=int, default=1)
     parser.add_argument(
         "--data-generation", type=str,choices=["random","dataset","internal"], default="dataset"
     )  # synthetic, dataset or internal
@@ -932,7 +937,7 @@ def run():
     parser.add_argument("--data-set", type=str, default="kaggle")  # or terabyte
     parser.add_argument("--raw-data-file", type=str, default="./input/train.txt")
     parser.add_argument("--processed-data-file", type=str, default="./input/kaggleAdDisplayChallenge_processed.npz")
-    parser.add_argument("--data-randomize", type=str, default="total")  # or day or none
+    parser.add_argument("--data-randomize", type=str, default="none")  # or day or none
     parser.add_argument("--data-trace-enable-padding", type=bool, default=False)
     parser.add_argument("--max-ind-range", type=int, default=-1)
     parser.add_argument("--data-sub-sample-rate", type=float, default=0.0)  # in [0, 1]
@@ -972,7 +977,7 @@ def run():
     # debugging and profiling
     parser.add_argument("--print-freq", type=int, default=1024)
     parser.add_argument("--test-freq", type=int, default=1024)
-    parser.add_argument("--test-mini-batch-size", type=int, default=16384)
+    parser.add_argument("--test-mini-batch-size", type=int, default=1)
     parser.add_argument("--test-num-workers", type=int, default=1)
     parser.add_argument("--print-time", action="store_true", default=True)
     parser.add_argument("--print-wall-time", action="store_true", default=False)
@@ -1493,271 +1498,7 @@ def run():
         args.enable_profiling, use_cuda=use_gpu, record_shapes=True
     ) as prof:
         if not args.inference_only:
-            k = 0
-            total_time_begin = 0
-            while k < args.nepochs:
-                if args.mlperf_logging:
-                    mlperf_logger.barrier()
-                    mlperf_logger.log_start(
-                        key=mlperf_logger.constants.BLOCK_START,
-                        metadata={
-                            mlperf_logger.constants.FIRST_EPOCH_NUM: (k + 1),
-                            mlperf_logger.constants.EPOCH_COUNT: 1,
-                        },
-                    )
-                    mlperf_logger.barrier()
-                    mlperf_logger.log_start(
-                        key=mlperf_logger.constants.EPOCH_START,
-                        metadata={mlperf_logger.constants.EPOCH_NUM: (k + 1)},
-                    )
-
-                if k < skip_upto_epoch:
-                    continue
-
-                if args.mlperf_logging:
-                    previous_iteration_time = None
-
-                for j, inputBatch in enumerate(train_ld):
-                    if j == 0 and args.save_onnx:
-                        X_onnx, lS_o_onnx, lS_i_onnx, _, _, _ = unpack_batch(inputBatch)
-
-                    if j < skip_upto_batch:
-                        continue
-
-                    X, lS_o, lS_i, T, W, CBPP = unpack_batch(inputBatch)
-
-                    if args.mlperf_logging:
-                        current_time = time_wrap(use_gpu)
-                        if previous_iteration_time:
-                            iteration_time = current_time - previous_iteration_time
-                        else:
-                            iteration_time = 0
-                        previous_iteration_time = current_time
-                    else:
-                        t1 = time_wrap(use_gpu)
-
-                    # early exit if nbatches was set by the user and has been exceeded
-                    if nbatches > 0 and j >= nbatches:
-                        break
-
-                    # Skip the batch if batch size not multiple of total ranks
-                    if ext_dist.my_size > 1 and X.size(0) % ext_dist.my_size != 0:
-                        print(
-                            "Warning: Skiping the batch %d with size %d"
-                            % (j, X.size(0))
-                        )
-                        continue
-
-                    mbs = T.shape[0]  # = args.mini_batch_size except maybe for last
-
-                    # forward pass
-                    Z = dlrm_wrap(
-                        X,
-                        lS_o,
-                        lS_i,
-                        use_gpu,
-                        device,
-                        ndevices=ndevices,
-                    )
-
-                    if ext_dist.my_size > 1:
-                        T = T[ext_dist.get_my_slice(mbs)]
-                        W = W[ext_dist.get_my_slice(mbs)]
-
-                    # loss
-                    E = loss_fn_wrap(Z, T, use_gpu, device)
-
-                    # compute loss and accuracy
-                    L = E.detach().cpu().numpy()  # numpy array
-                    # training accuracy is not disabled
-                    # S = Z.detach().cpu().numpy()  # numpy array
-                    # T = T.detach().cpu().numpy()  # numpy array
-
-                    # # print("res: ", S)
-
-                    # # print("j, train: BCE ", j, L)
-
-                    # mbs = T.shape[0]  # = args.mini_batch_size except maybe for last
-                    # A = np.sum((np.round(S, 0) == T).astype(np.uint8))
-
-                    with record_function("DLRM backward"):
-                        # scaled error gradient propagation
-                        # (where we do not accumulate gradients across mini-batches)
-                        if (
-                            args.mlperf_logging
-                            and (j + 1) % args.mlperf_grad_accum_iter == 0
-                        ) or not args.mlperf_logging:
-                            optimizer.zero_grad()
-                        # backward pass
-                        E.backward()
-
-                        # optimizer
-                        if (
-                            args.mlperf_logging
-                            and (j + 1) % args.mlperf_grad_accum_iter == 0
-                        ) or not args.mlperf_logging:
-                            optimizer.step()
-                            lr_scheduler.step()
-
-                    if args.mlperf_logging:
-                        total_time += iteration_time
-                    else:
-                        t2 = time_wrap(use_gpu)
-                        total_time += t2 - t1
-
-                    total_loss += L * mbs
-                    total_iter += 1
-                    total_samp += mbs
-
-                    should_print = ((j + 1) % args.print_freq == 0) or (
-                        j + 1 == nbatches
-                    )
-                    should_test = (
-                        (args.test_freq > 0)
-                        and (args.data_generation in ["dataset", "random"])
-                        and (((j + 1) % args.test_freq == 0) or (j + 1 == nbatches))
-                    )
-
-                    # print time, loss and accuracy
-                    if should_print or should_test:
-                        gT = 1000.0 * total_time / total_iter if args.print_time else -1
-                        total_time = 0
-
-                        train_loss = total_loss / total_samp
-                        total_loss = 0
-
-                        str_run_type = (
-                            "inference" if args.inference_only else "training"
-                        )
-
-                        wall_time = ""
-                        if args.print_wall_time:
-                            wall_time = " ({})".format(time.strftime("%H:%M"))
-
-                        print(
-                            "Finished {} it {}/{} of epoch {}, {:.2f} ms/it,".format(
-                                str_run_type, j + 1, nbatches, k, gT
-                            )
-                            + " loss {:.6f}".format(train_loss)
-                            + wall_time,
-                            flush=True,
-                        )
-
-                        log_iter = nbatches * k + j + 1
-                        writer.add_scalar("Train/Loss", train_loss, log_iter)
-
-                        total_iter = 0
-                        total_samp = 0
-
-                    # testing
-                    if should_test:
-                        epoch_num_float = (j + 1) / len(train_ld) + k + 1
-                        if args.mlperf_logging:
-                            mlperf_logger.barrier()
-                            mlperf_logger.log_start(
-                                key=mlperf_logger.constants.EVAL_START,
-                                metadata={
-                                    mlperf_logger.constants.EPOCH_NUM: epoch_num_float
-                                },
-                            )
-
-                        # don't measure training iter time in a test iteration
-                        if args.mlperf_logging:
-                            previous_iteration_time = None
-                        print(
-                            "Testing at - {}/{} of epoch {},".format(j + 1, nbatches, k)
-                        )
-                        model_metrics_dict, is_best = inference(
-                            args,
-                            dlrm,
-                            best_acc_test,
-                            best_auc_test,
-                            test_ld,
-                            device,
-                            use_gpu,
-                            log_iter,
-                        )
-
-                        if (
-                            is_best
-                            and not (args.save_model == "")
-                            and not args.inference_only
-                        ):
-                            model_metrics_dict["epoch"] = k
-                            model_metrics_dict["iter"] = j + 1
-                            model_metrics_dict["train_loss"] = train_loss
-                            model_metrics_dict["total_loss"] = total_loss
-                            model_metrics_dict[
-                                "opt_state_dict"
-                            ] = optimizer.state_dict()
-                            print("Saving model to {}".format(args.save_model))
-                            torch.save(model_metrics_dict, args.save_model)
-
-                        if args.mlperf_logging:
-                            mlperf_logger.barrier()
-                            mlperf_logger.log_end(
-                                key=mlperf_logger.constants.EVAL_STOP,
-                                metadata={
-                                    mlperf_logger.constants.EPOCH_NUM: epoch_num_float
-                                },
-                            )
-
-                        # Uncomment the line below to print out the total time with overhead
-                        # print("Total test time for this group: {}" \
-                        # .format(time_wrap(use_gpu) - accum_test_time_begin))
-
-                        if (
-                            args.mlperf_logging
-                            and (args.mlperf_acc_threshold > 0)
-                            and (best_acc_test > args.mlperf_acc_threshold)
-                        ):
-                            print(
-                                "MLPerf testing accuracy threshold "
-                                + str(args.mlperf_acc_threshold)
-                                + " reached, stop training"
-                            )
-                            break
-
-                        if (
-                            args.mlperf_logging
-                            and (args.mlperf_auc_threshold > 0)
-                            and (best_auc_test > args.mlperf_auc_threshold)
-                        ):
-                            print(
-                                "MLPerf testing auc threshold "
-                                + str(args.mlperf_auc_threshold)
-                                + " reached, stop training"
-                            )
-                            if args.mlperf_logging:
-                                mlperf_logger.barrier()
-                                mlperf_logger.log_end(
-                                    key=mlperf_logger.constants.RUN_STOP,
-                                    metadata={
-                                        mlperf_logger.constants.STATUS: mlperf_logger.constants.SUCCESS
-                                    },
-                                )
-                            break
-
-                if args.mlperf_logging:
-                    mlperf_logger.barrier()
-                    mlperf_logger.log_end(
-                        key=mlperf_logger.constants.EPOCH_STOP,
-                        metadata={mlperf_logger.constants.EPOCH_NUM: (k + 1)},
-                    )
-                    mlperf_logger.barrier()
-                    mlperf_logger.log_end(
-                        key=mlperf_logger.constants.BLOCK_STOP,
-                        metadata={mlperf_logger.constants.FIRST_EPOCH_NUM: (k + 1)},
-                    )
-                k += 1  # nepochs
-            if args.mlperf_logging and best_auc_test <= args.mlperf_auc_threshold:
-                mlperf_logger.barrier()
-                mlperf_logger.log_end(
-                    key=mlperf_logger.constants.RUN_STOP,
-                    metadata={
-                        mlperf_logger.constants.STATUS: mlperf_logger.constants.ABORTED
-                    },
-                )
+            raise ValueError("Training not supported")
         else:
             print("Testing for inference only")
             inference(
@@ -1769,6 +1510,7 @@ def run():
                 device,
                 use_gpu,
             )
+            print(f"DLRM: num_lookups = {global_num_lookups}")
 
     # profiling
     if args.enable_profiling:
@@ -1884,4 +1626,3 @@ def run():
 
 if __name__ == "__main__":
     run()
-    print(f"DLRM: num_lookups = {global_num_lookups}")
