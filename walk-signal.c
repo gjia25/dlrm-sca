@@ -350,13 +350,12 @@ int main(int argc, char *argv[])
 			walkmaps(pid, output_file, num_lookups);
 			
 			gettimeofday(&ts4, NULL);
-			printf("set time  : %.3f s\n", (double) (ts2.tv_sec - ts1.tv_sec) + (ts2.tv_usec - ts1.tv_usec));
-			printf("read time : %.3f s\n", (double) (ts4.tv_sec - ts2.tv_sec) + (ts4.tv_usec - ts2.tv_usec));
-			
 			// calculate times
-			// set_us = 1000000 * (ts2.tv_sec - ts1.tv_sec) + (ts2.tv_usec - ts1.tv_usec);
+			set_us = 1000000 * (ts2.tv_sec - ts1.tv_sec) + (ts2.tv_usec - ts1.tv_usec);
+			read_us = 1000000 * (ts4.tv_sec - ts2.tv_sec) + (ts4.tv_usec - ts2.tv_usec);
+			printf("set time  : %.3f s\n", (double)set_us / 1000000);
+			printf("read time : %.3f s\n", (double)read_us / 1000000);
 			// slp_us = 1000000 * (ts3.tv_sec - ts2.tv_sec) + (ts3.tv_usec - ts2.tv_usec);
-			// read_us = 1000000 * (ts4.tv_sec - ts3.tv_sec) + (ts4.tv_usec - ts3.tv_usec);
 			// dur_us = 1000000 * (ts4.tv_sec - ts1.tv_sec) + (ts4.tv_usec - ts1.tv_usec);
 			// est_us = dur_us - (set_us / 2) - (read_us / 2);
 			if (g_debug) {
