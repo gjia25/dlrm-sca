@@ -18,5 +18,5 @@ if __name__ == "__main__":
 
         n = arr1[i]
 
-        os.kill(parser.parent_pid, signal.SIGUSR1)
+        os.kill(args.parent_pid, signal.SIGUSR1)
         time.sleep(1)
