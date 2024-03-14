@@ -78,8 +78,6 @@ with warnings.catch_warnings():
 
 exc = getattr(builtins, "IOError", "FileNotFoundError")
 
-global_num_lookups = 0
-
 def time_wrap(use_gpu):
     if use_gpu:
         torch.cuda.synchronize()
@@ -213,7 +211,6 @@ class DLRM_Net(nn.Module):
                 if i not in self.local_emb_indices:
                     continue
             n = ln[i]
-
             # construct embedding operator
             if self.qr_flag and n > self.qr_threshold:
                 EE = QREmbeddingBag(
@@ -375,7 +372,8 @@ class DLRM_Net(nn.Module):
         #   corresponding to a single lookup
         # 2. for each embedding the lookups are further organized into a batch
         # 3. for a list of embedding tables there is a list of batched lookups
-        
+        print(f"lS_i has shape {lS_i.shape}: {lS_i}")
+        print(f"lS_o has shape {lS_o.shape}: {lS_o}")
         with open("lS_i.csv", "w", newline="") as csvfile:
             writer = csv.writer(csvfile)
             for sparse_index_group_batch in lS_i:
@@ -383,7 +381,7 @@ class DLRM_Net(nn.Module):
         with open("lS_o.csv", "w", newline="") as csvfile:
             writer = csv.writer(csvfile)
             for sparse_offset_group_batch in lS_o:
-                writer.writerow(sparse_index_group_batch.tolist())
+                writer.writerow(sparse_offset_group_batch.tolist())
         
         ly = []
         for k, sparse_index_group_batch in enumerate(lS_i):
@@ -423,7 +421,7 @@ class DLRM_Net(nn.Module):
                 ly.append(QV)
             else:
                 os.kill(self.parent_pid, signal.SIGUSR1)
-                time.sleep(0.5)
+                time.sleep(3)
 
                 E = emb_l[k]
                 V = E(
@@ -431,12 +429,11 @@ class DLRM_Net(nn.Module):
                     sparse_offset_group_batch,
                     per_sample_weights=per_sample_weights,
                 )
-                global global_num_lookups
-                global_num_lookups += 1
                 
-                time.sleep(0.5)
+                time.sleep(3)
                 os.kill(self.parent_pid, signal.SIGUSR1)
-                
+                time.sleep(3)
+
                 ly.append(V)
 
         # print(ly)
@@ -1510,7 +1507,6 @@ def run():
                 device,
                 use_gpu,
             )
-            print(f"DLRM: num_lookups = {global_num_lookups}")
 
     # profiling
     if args.enable_profiling:
