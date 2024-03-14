@@ -13,7 +13,7 @@ if __name__ == "__main__":
     arr1 = list(range(NUM_LOOKUPS))
 
     for i in range(NUM_LOOKUPS):
-        os.kill(parser.parent_pid, signal.SIGUSR1)
+        os.kill(args.parent_pid, signal.SIGUSR1)
         time.sleep(1)
 
         n = arr1[i]
