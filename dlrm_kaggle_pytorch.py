@@ -379,11 +379,7 @@ class DLRM_Net(nn.Module):
             writer = csv.writer(csvfile)
             for sparse_index_group_batch in lS_i:
                 writer.writerow(sparse_index_group_batch.tolist())
-        with open("lS_o.csv", "w", newline="") as csvfile:
-            writer = csv.writer(csvfile)
-            for sparse_offset_group_batch in lS_o:
-                writer.writerow(sparse_offset_group_batch.tolist())
-        
+
         ly = []
         for k, sparse_index_group_batch in enumerate(lS_i):
             sparse_offset_group_batch = lS_o[k]
@@ -431,7 +427,7 @@ class DLRM_Net(nn.Module):
                     per_sample_weights=per_sample_weights,
                 )
                 
-                time.sleep(3)
+                time.sleep(3.5)
                 os.kill(self.parent_pid, signal.SIGUSR1)
                 time.sleep(3)
                 print(f"{k},{hex(id(E))},{hex(id(V))}")
