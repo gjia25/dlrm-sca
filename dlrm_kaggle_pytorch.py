@@ -248,6 +248,7 @@ class DLRM_Net(nn.Module):
             else:
                 v_W_l.append(torch.ones(n, dtype=torch.float32))
             emb_l.append(EE)
+            print(f"{i},{hex(id(emb_l))},{hex(id(EE))}")
         return emb_l, v_W_l
 
     def __init__(
@@ -420,8 +421,8 @@ class DLRM_Net(nn.Module):
 
                 ly.append(QV)
             else:
-                os.kill(self.parent_pid, signal.SIGUSR1)
-                time.sleep(3)
+                # os.kill(self.parent_pid, signal.SIGUSR1)
+                # time.sleep(4)
 
                 E = emb_l[k]
                 V = E(
@@ -430,10 +431,10 @@ class DLRM_Net(nn.Module):
                     per_sample_weights=per_sample_weights,
                 )
                 
-                time.sleep(3)
-                os.kill(self.parent_pid, signal.SIGUSR1)
-                time.sleep(3)
-
+                # time.sleep(3)
+                # os.kill(self.parent_pid, signal.SIGUSR1)
+                # time.sleep(3)
+                print(f"{k},{hex(id(E))},{hex(id(V))}")
                 ly.append(V)
 
         # print(ly)

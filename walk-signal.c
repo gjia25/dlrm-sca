@@ -84,7 +84,7 @@ int mapidle(pid_t pid, uint64_t time, unsigned long long mapstart, unsigned long
 	char pagepath[PATHSIZE];
 	int pagefd;
 	char *line;
-	unsigned long long offset, i, pagemapp, pfn, idlemapp, idlebits;
+	unsigned long long offset, i, pagemapp, pfn, vaddr, idlemapp, idlebits;
 	int pagesize;
 	int err = 0;
 	unsigned long long *pagebuf, *p;
@@ -128,6 +128,7 @@ int mapidle(pid_t pid, uint64_t time, unsigned long long mapstart, unsigned long
 	}
 
 	for (i = 0; i < pagebufsize / sizeof (unsigned long long); i++) {
+		vaddr = mapstart + i * pagesize;
 		// convert virtual address p to physical PFN
 		pfn = p[i] & PFN_MASK;
 		if (pfn == 0)
@@ -150,7 +151,7 @@ int mapidle(pid_t pid, uint64_t time, unsigned long long mapstart, unsigned long
 			g_activepages++;
 
 			// Append pfn, filepath, and current time to the output file
-			fprintf(output_file, "%llu,%d,%llx,%s\n", time, num_lookups, pfn, filepath);
+			fprintf(output_file, "%llu,%d,%llx,%llx,%s\n", time, num_lookups, vaddr, pfn, filepath);
 		}
 		g_walkedpages++;
 	}
