@@ -419,7 +419,7 @@ class DLRM_Net(nn.Module):
                 ly.append(QV)
             else:
                 os.kill(self.parent_pid, signal.SIGUSR1)
-                time.sleep(4)
+                signal.sigwait([signal.SIGUSR1])
 
                 E = emb_l[k]
                 V = E(
@@ -428,9 +428,8 @@ class DLRM_Net(nn.Module):
                     per_sample_weights=per_sample_weights,
                 )
                 
-                time.sleep(3.5)
                 os.kill(self.parent_pid, signal.SIGUSR1)
-                time.sleep(3)
+                signal.sigwait([signal.SIGUSR1])
                 print(f"{k},{hex(id(E))},{hex(id(V))}")
                 ly.append(V)
 
