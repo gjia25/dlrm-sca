@@ -206,6 +206,7 @@ class DLRM_Net(nn.Module):
     def create_emb(self, m, ln, weighted_pooling=None):
         emb_l = nn.ModuleList()
         v_W_l = []
+        print("idx,emb_va,emb_i_va,n,m,est_size_bytes")
         for i in range(0, ln.size):
             if ext_dist.my_size > 1:
                 if i not in self.local_emb_indices:
@@ -248,7 +249,7 @@ class DLRM_Net(nn.Module):
             else:
                 v_W_l.append(torch.ones(n, dtype=torch.float32))
             emb_l.append(EE)
-            print(f"{i},{hex(id(emb_l))},{hex(id(EE))}")
+            print(f"{i},{hex(id(emb_l))},{hex(id(EE))},{n},{m},{n*m*4}")
         return emb_l, v_W_l
 
     def __init__(
