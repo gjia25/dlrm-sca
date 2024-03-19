@@ -251,7 +251,7 @@ class DLRM_Net(nn.Module):
             else:
                 v_W_l.append(torch.ones(n, dtype=torch.float32))
             emb_l.append(EE)
-            print(f"{i},{hex(id(emb_l))},{hex(id(EE))},{n},{m},{n*m*4}")
+            print(f"{i},{hex(id(emb_l))},{hex(id(EE))},{n},{m},{n*m*4}") # assuming 32-bit tensors (4 bytes)
         return emb_l, v_W_l
 
     def __init__(
@@ -974,7 +974,7 @@ def run():
     # debugging and profiling
     parser.add_argument("--print-freq", type=int, default=1024)
     parser.add_argument("--test-freq", type=int, default=1024)
-    parser.add_argument("--test-mini-batch-size", type=int, default=1)
+    parser.add_argument("--test-mini-batch-size", type=int, default=4)
     parser.add_argument("--test-num-workers", type=int, default=1)
     parser.add_argument("--print-time", action="store_true", default=True)
     parser.add_argument("--print-wall-time", action="store_true", default=False)
