@@ -160,6 +160,8 @@ class LRPolicyScheduler(_LRScheduler):
                 lr = self.base_lrs
         return lr
 
+def signal_handler(signal_number, frame):
+    pass
 
 ### define dlrm in PyTorch ###
 class DLRM_Net(nn.Module):
@@ -382,6 +384,7 @@ class DLRM_Net(nn.Module):
                 writer.writerow(sparse_index_group_batch.tolist())
 
         ly = []
+        signal.signal(signal.SIGUSR1, signal_handler)
         for k, sparse_index_group_batch in enumerate(lS_i):
             sparse_offset_group_batch = lS_o[k]
             
@@ -419,7 +422,7 @@ class DLRM_Net(nn.Module):
                 ly.append(QV)
             else:
                 os.kill(self.parent_pid, signal.SIGUSR1)
-                signal.sigwait([signal.SIGUSR1])
+                signal.pause()
 
                 E = emb_l[k]
                 V = E(
@@ -429,7 +432,7 @@ class DLRM_Net(nn.Module):
                 )
                 
                 os.kill(self.parent_pid, signal.SIGUSR1)
-                signal.sigwait([signal.SIGUSR1])
+                signal.pause()
                 print(f"{k},{hex(id(E))},{hex(id(V))}")
                 ly.append(V)
 

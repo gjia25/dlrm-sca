@@ -262,26 +262,29 @@ void signal_handler(int signal_num)
     if (signal_num == SIGUSR1) {
         if (in_lookup == 0) {
 			static struct timeval ts1, ts2;
+			unsigned long long set_us;
 			in_lookup = 1;
             num_lookups++;
+			// gettimeofday(&ts1, NULL);
 			setidlemap();
-			set_us = 1000000 * (ts2.tv_sec - ts1.tv_sec) + (ts2.tv_usec - ts1.tv_usec); // 0.8 s
-			printf("set time  : %.3f s\n", (double)set_us / 1000000);
+			// gettimeofday(&ts2, NULL);
+			// set_us = 1000000 * (ts2.tv_sec - ts1.tv_sec) + (ts2.tv_usec - ts1.tv_usec); // 0.8 s
+			// printf("set time  : %.3f s\n", (double)set_us / 1000000);
         } else {
 			static struct timeval ts3, ts4;
+			unsigned long long read_us;
 			// read idle flags
-			gettimeofday(&ts3, NULL);
+			// gettimeofday(&ts3, NULL);
 			loadidlemap();
 			walkmaps(pid, output_file, num_lookups);
-			gettimeofday(&ts4, NULL);
+			// gettimeofday(&ts4, NULL);
 
 			// calculate times
-			read_us = 1000000 * (ts4.tv_sec - ts3.tv_sec) + (ts4.tv_usec - ts3.tv_usec); // 2.4 s
-			printf("read time : %.3f s\n", (double)read_us / 1000000);
-			printf("walked pages: %d\n", g_walkedpages);
+			// read_us = 1000000 * (ts4.tv_sec - ts3.tv_sec) + (ts4.tv_usec - ts3.tv_usec); // 2.4 s
+			// printf("read time : %.3f s\n", (double)read_us / 1000000);
+			// printf("walked pages: %d\n", g_walkedpages);
 			in_lookup = 0;
         }
-		printf("Parent: sending signal\n");
 		kill(pid, SIGUSR1);
     }
 }
@@ -290,7 +293,6 @@ int main(int argc, char *argv[])
 {
 	int status, err = 0;
 	double mbytes;
-	unsigned long long set_us, read_us, dur_us, slp_us, est_us;
 	
 	// options
 	if (argc < 3) {
