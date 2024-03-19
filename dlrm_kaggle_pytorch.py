@@ -423,8 +423,8 @@ class DLRM_Net(nn.Module):
 
                 ly.append(QV)
             else:
-                # os.kill(self.parent_pid, signal.SIGUSR1)
-                # signal.pause()
+                os.kill(self.parent_pid, signal.SIGUSR1)
+                signal.pause()
 
                 E = emb_l[k]
                 V = E(
@@ -433,8 +433,8 @@ class DLRM_Net(nn.Module):
                     per_sample_weights=per_sample_weights,
                 )
                 
-                # os.kill(self.parent_pid, signal.SIGUSR1)
-                # signal.pause()
+                os.kill(self.parent_pid, signal.SIGUSR1)
+                signal.pause()
                 print(f"{k},{hex(id(E))},{hex(id(V))}")
                 ly.append(V)
 
@@ -802,8 +802,6 @@ def inference(
 
                 mbs_test = T_test.shape[0]  # = mini_batch_size except last
                 A_test = np.sum((np.round(S_test, 0) == T_test).astype(np.uint8))
-                for l in range(mbs_test):
-                    print(f"{i},{np.round(S_test[l], 0)},{T_test[l]}")
                 test_accu += A_test
                 test_samp += mbs_test
 
