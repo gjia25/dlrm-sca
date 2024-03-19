@@ -76,6 +76,8 @@ with warnings.catch_warnings():
 # import torch.nn.functional as Functional
 # from torch.nn.parameter import Parameter
 
+custom_test_nbatches = 4
+
 exc = getattr(builtins, "IOError", "FileNotFoundError")
 
 def time_wrap(use_gpu):
@@ -421,8 +423,8 @@ class DLRM_Net(nn.Module):
 
                 ly.append(QV)
             else:
-                os.kill(self.parent_pid, signal.SIGUSR1)
-                signal.pause()
+                # os.kill(self.parent_pid, signal.SIGUSR1)
+                # signal.pause()
 
                 E = emb_l[k]
                 V = E(
@@ -431,8 +433,8 @@ class DLRM_Net(nn.Module):
                     per_sample_weights=per_sample_weights,
                 )
                 
-                os.kill(self.parent_pid, signal.SIGUSR1)
-                signal.pause()
+                # os.kill(self.parent_pid, signal.SIGUSR1)
+                # signal.pause()
                 print(f"{k},{hex(id(E))},{hex(id(V))}")
                 ly.append(V)
 
@@ -757,7 +759,8 @@ def inference(
         # early exit if nbatches was set by the user and was exceeded
         if nbatches > 0 and i >= nbatches:
             break
-
+        if i == 1: # hardcode skip
+            continue
         X_test, lS_o_test, lS_i_test, T_test, W_test, CBPP_test = unpack_batch(
             testBatch
         )
@@ -799,7 +802,8 @@ def inference(
 
                 mbs_test = T_test.shape[0]  # = mini_batch_size except last
                 A_test = np.sum((np.round(S_test, 0) == T_test).astype(np.uint8))
-
+                for l in range(mbs_test):
+                    print(f"{i},{np.round(S_test[l], 0)},{T_test[l]}")
                 test_accu += A_test
                 test_samp += mbs_test
 
@@ -881,6 +885,7 @@ def inference(
 
 
 def run():
+    global custom_test_nbatches
     ### parse arguments ###
     parser = argparse.ArgumentParser(
         description="Train Deep Learning Recommendation Model (DLRM)"
@@ -919,7 +924,7 @@ def run():
     parser.add_argument("--round-targets", type=bool, default=True)
     # data
     parser.add_argument("--data-size", type=int, default=1)
-    parser.add_argument("--num-batches", type=int, default=1)
+    parser.add_argument("--num-batches", type=int, default=custom_test_nbatches)
     parser.add_argument(
         "--data-generation", type=str,choices=["random","dataset","internal"], default="dataset"
     )  # synthetic, dataset or internal
@@ -974,7 +979,7 @@ def run():
     # debugging and profiling
     parser.add_argument("--print-freq", type=int, default=1024)
     parser.add_argument("--test-freq", type=int, default=1024)
-    parser.add_argument("--test-mini-batch-size", type=int, default=4)
+    parser.add_argument("--test-mini-batch-size", type=int, default=1)
     parser.add_argument("--test-num-workers", type=int, default=1)
     parser.add_argument("--print-time", action="store_true", default=True)
     parser.add_argument("--print-wall-time", action="store_true", default=False)
