@@ -68,6 +68,7 @@ unsigned long long *g_idlebuf;
 unsigned long long g_idlebufsize;
 static struct timeval ts0;
 
+FILE* output_file;
 pid_t pid, ppid;
 int in_lookup = 0;
 int walked_once = 0;
@@ -260,15 +261,27 @@ void signal_handler(int signal_num)
 {
     if (signal_num == SIGUSR1) {
         if (in_lookup == 0) {
+			static struct timeval ts1, ts2;
 			in_lookup = 1;
             num_lookups++;
 			setidlemap();
+			set_us = 1000000 * (ts2.tv_sec - ts1.tv_sec) + (ts2.tv_usec - ts1.tv_usec); // 0.8 s
+			printf("set time  : %.3f s\n", (double)set_us / 1000000);
         } else {
-			if (walked_once) {
-				in_lookup = 0;
-				walked_once = 0;
-			} // else, go back to main loop
+			static struct timeval ts3, ts4;
+			// read idle flags
+			gettimeofday(&ts3, NULL);
+			loadidlemap();
+			walkmaps(pid, output_file, num_lookups);
+			gettimeofday(&ts4, NULL);
+
+			// calculate times
+			read_us = 1000000 * (ts4.tv_sec - ts3.tv_sec) + (ts4.tv_usec - ts3.tv_usec); // 2.4 s
+			printf("read time : %.3f s\n", (double)read_us / 1000000);
+			printf("walked pages: %d\n", g_walkedpages);
+			in_lookup = 0;
         }
+		printf("Parent: sending signal\n");
 		kill(pid, SIGUSR1);
     }
 }
@@ -277,7 +290,6 @@ int main(int argc, char *argv[])
 {
 	int status, err = 0;
 	double mbytes;
-	static struct timeval ts1, ts2, ts3, ts4;
 	unsigned long long set_us, read_us, dur_us, slp_us, est_us;
 	
 	// options
@@ -329,7 +341,7 @@ int main(int argc, char *argv[])
 		// Open output file for appending
 		char filename[PATHSIZE];
 		sprintf(filename, "o-%s-%llu", argv[2], ts0.tv_sec * (uint64_t)1000000 + ts0.tv_usec);
-		FILE *output_file = fopen(filename, "a");
+		output_file = fopen(filename, "a");
 		if (output_file == NULL) {
 			perror("Unable to open output file");
 			err = 1;
@@ -337,30 +349,8 @@ int main(int argc, char *argv[])
 		}
 		
 		signal(SIGUSR1, signal_handler);
-		while (waitpid(pid, NULL, WNOHANG) == 0) {
-			if (in_lookup == 0) {
-				continue;
-			}
-			
-			// set idle flags
-			gettimeofday(&ts1, NULL);
-			if (walked_once) {
-				setidlemap();
-			}
-			gettimeofday(&ts2, NULL);
-			
-			// read idle flags
-			loadidlemap();
-			walkmaps(pid, output_file, num_lookups);
-			
-			gettimeofday(&ts4, NULL);
-			// calculate times
-			set_us = 1000000 * (ts2.tv_sec - ts1.tv_sec) + (ts2.tv_usec - ts1.tv_usec); // 0.8 s
-			read_us = 1000000 * (ts4.tv_sec - ts2.tv_sec) + (ts4.tv_usec - ts2.tv_usec); // 2.4 s
-			printf("set time  : %.3f s\n", (double)set_us / 1000000);
-			printf("read time : %.3f s\n", (double)read_us / 1000000);
-			printf("walked pages: %d\n", g_walkedpages);
-			walked_once = 1;
+		while (waitpid(pid, NULL, WNOHANG) >= 0) {
+			;
 		}
 
 		printf("Parent: Child process exited with status %d\n", status);
