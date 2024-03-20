@@ -80,9 +80,6 @@ int mapidle(pid_t pid, uint64_t time, unsigned long long mapstart, unsigned long
 	unsigned long long p, pagemapp, pfn, vaddr, idlemapp, idlebits;
 	int flags;
 	int err = 0;
-	unsigned long long *pagebuf, *p;
-	unsigned long long pagebufsize;
-	ssize_t len;
 
 	// open pagemap for virtual to PFN translation
 	if (sprintf(pagepath, "/proc/%d/pagemap", pid) < 0) {
@@ -229,11 +226,11 @@ void signal_handler(int signal_num)
 			unsigned long long set_us;
 			in_lookup = 1;
             num_lookups++;
-			walkmaps(pid, SETIDLE); // set idle flags to 1
+			walkmaps(pid, SETIDLE, output_file, num_lookups); // set idle flags to 1
         } else {
 			static struct timeval ts3, ts4;
 			unsigned long long read_us;
-			walkmaps(pid, READIDLE); // read page flags
+			walkmaps(pid, READIDLE, output_file, num_lookups); // read page flags
 			in_lookup = 0;
         }
 		kill(pid, SIGUSR1);
