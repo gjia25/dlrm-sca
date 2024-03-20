@@ -210,7 +210,7 @@ class DLRM_Net(nn.Module):
     def create_emb(self, m, ln, weighted_pooling=None):
         emb_l = nn.ModuleList()
         v_W_l = []
-        print("idx,emb_va,emb_i_va,n,m,est_size_bytes")
+        print("idx,emb_va,emb_i_va,n,m,weight_bytes")
         for i in range(0, ln.size):
             if ext_dist.my_size > 1:
                 if i not in self.local_emb_indices:
@@ -253,7 +253,7 @@ class DLRM_Net(nn.Module):
             else:
                 v_W_l.append(torch.ones(n, dtype=torch.float32))
             emb_l.append(EE)
-            print(f"{i},{hex(id(emb_l))},{hex(id(EE))},{n},{m},{n*m*4}") # assuming 32-bit tensors (4 bytes)
+            print(f"{i},{hex(id(emb_l))},{hex(id(EE))},{n},{m},{EE.weight.element_size() * EE.weight.nelement()}")
         return emb_l, v_W_l
 
     def __init__(
@@ -378,12 +378,6 @@ class DLRM_Net(nn.Module):
         #   corresponding to a single lookup
         # 2. for each embedding the lookups are further organized into a batch
         # 3. for a list of embedding tables there is a list of batched lookups
-        print(f"lS_i has shape {lS_i.shape}: {lS_i}")
-        print(f"lS_o has shape {lS_o.shape}: {lS_o}")
-        with open("lS_i.csv", "w", newline="") as csvfile:
-            writer = csv.writer(csvfile)
-            for sparse_index_group_batch in lS_i:
-                writer.writerow(sparse_index_group_batch.tolist())
 
         ly = []
         signal.signal(signal.SIGUSR1, signal_handler)
@@ -435,7 +429,7 @@ class DLRM_Net(nn.Module):
                 
                 os.kill(self.parent_pid, signal.SIGUSR1)
                 signal.pause()
-                print(f"{k},{hex(id(E))},{hex(id(V))}")
+                print(f"{k},{hex(id(sparse_index_group_batch))},{hex(id(sparse_offset_group_batch))},{hex(id(E))},{hex(id(V))}")
                 ly.append(V)
 
         # print(ly)
@@ -1494,36 +1488,51 @@ def run():
     writer = SummaryWriter(tb_file)
 
     ext_dist.barrier()
-    with torch.autograd.profiler.profile(
-        args.enable_profiling, use_cuda=use_gpu, record_shapes=True
-    ) as prof:
-        if not args.inference_only:
-            raise ValueError("Training not supported")
-        else:
-            print("Testing for inference only")
-            inference(
-                args,
-                dlrm,
-                best_acc_test,
-                best_auc_test,
-                test_ld,
-                device,
-                use_gpu,
-            )
 
-    # profiling
-    if args.enable_profiling:
-        time_stamp = str(datetime.datetime.now()).replace(" ", "_")
-        with open("dlrm_s_pytorch" + time_stamp + "_shape.prof", "w") as prof_f:
-            prof_f.write(
-                prof.key_averages(group_by_input_shape=True).table(
-                    sort_by="self_cpu_time_total"
-                )
-            )
-        with open("dlrm_s_pytorch" + time_stamp + "_total.prof", "w") as prof_f:
-            prof_f.write(prof.key_averages().table(sort_by="self_cpu_time_total"))
-        prof.export_chrome_trace("dlrm_s_pytorch" + time_stamp + ".json")
-        # print(prof.key_averages().table(sort_by="cpu_time_total"))
+    print("Testing for inference only")
+    inference(
+        args,
+        dlrm,
+        best_acc_test,
+        best_auc_test,
+        test_ld,
+        device,
+        use_gpu,
+    )
+    # NOTE: Replace above for profiling
+    # with torch.profiler.profile(
+    #     activities=[torch.profiler.ProfilerActivity.CPU], record_shapes=True, profile_memory=True
+    # ) as prof:
+    #     if not args.inference_only:
+    #         raise ValueError("Training not supported")
+    #     else:
+    #         print("Testing for inference only")
+    #         inference(
+    #             args,
+    #             dlrm,
+    #             best_acc_test,
+    #             best_auc_test,
+    #             test_ld,
+    #             device,
+    #             use_gpu,
+    #         )
+    # time_stamp = str(datetime.datetime.now()).replace(" ", "_")
+    # with open("o_dlrm_py" + time_stamp + ".prof", "w") as prof_f:
+    #     prof_f.write(prof.key_averages().table(sort_by="self_cpu_memory_usage"))    
+
+    # # profiling
+    # if args.enable_profiling:
+    #     time_stamp = str(datetime.datetime.now()).replace(" ", "_")
+    #     with open("dlrm_s_pytorch" + time_stamp + "_shape.prof", "w") as prof_f:
+    #         prof_f.write(
+    #             prof.key_averages(group_by_input_shape=True).table(
+    #                 sort_by="self_cpu_time_total"
+    #             )
+    #         )
+    #     with open("dlrm_s_pytorch" + time_stamp + "_total.prof", "w") as prof_f:
+    #         prof_f.write(prof.key_averages().table(sort_by="self_cpu_time_total"))
+    #     prof.export_chrome_trace("dlrm_s_pytorch" + time_stamp + ".json")
+    #     # print(prof.key_averages().table(sort_by="cpu_time_total"))
 
     # plot compute graph
     if args.plot_compute_graph:
