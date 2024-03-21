@@ -222,9 +222,6 @@ int setidlemap()
 	}
 	while (write(idlefd, &buf, sizeof(buf)) > 0) {;}
 
-	for (i = 0; i < sizeof (buf); i++)
-		printf("[%d]=%d\n", i, read())
-
 	close(idlefd);
 
 	return 0;
@@ -250,6 +247,11 @@ int loadidlemap()
 	p = g_idlebuf;
 	// unfortunately, larger reads do not seem supported
 	while ((len = read(idlefd, p, IDLEMAP_CHUNK_SIZE)) > 0) {
+		if ((p & 0xFFFFFFFFFFFFFFFFULL) == 0xFFFFFFFFFFFFFFFFULL) {
+		} else {
+			printf("Bytes not all 1s: %016llX\n", (unsigned long long)p);
+		}
+
 		p += IDLEMAP_CHUNK_SIZE;
 		g_idlebufsize += len;
 	}
@@ -273,7 +275,6 @@ void signal_handler(int signal_num)
             num_lookups++;
 			setidlemap(); // set idle flags to 1
 			loadidlemap();
-			print("%s", g_idlebuf);
         } else {
 			static struct timeval ts3, ts4;
 			unsigned long long read_us;
