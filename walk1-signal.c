@@ -1,5 +1,6 @@
 /*
- * Adapted from the following tool:
+ * Adapted from the following tool, described below: https://github.com/brendangregg/wss
+ *
  * wss-v2.c	Estimate the working set size (WSS) for a process on Linux.
  *		Version 2: suited for large processes.
  *
@@ -8,9 +9,7 @@
  * page flags, which is efficient for analyzing large processes, but not tiny
  * processes. For those, see wss-v1.c. There is also wss.pl, which uses can be
  * over 10x faster and works on older Linux, however, uses the referenced page
- * flag and has its own caveats. These tools can be found here:
- *
- * http://www.brendangregg.com/wss.pl
+ * flag and has its own caveats.
  *
  * Currently written for x86_64 and default page size only. Early version:
  * probably has bugs.
@@ -175,9 +174,10 @@ int walkmaps(pid_t pid, FILE *output_file, int num_lookups)
 	static struct timeval curr_ts;
 	uint64_t time;
 
+	// get time since start
 	gettimeofday(&curr_ts, NULL);
-	// time = curr_ts.tv_sec * (uint64_t)1000000 + curr_ts.tv_usec;
 	time = 1000000 * (curr_ts.tv_sec - ts0.tv_sec) + (curr_ts.tv_usec - ts0.tv_usec);
+	
 	// read virtual mappings
 	if (sprintf(mapspath, "/proc/%d/maps", pid) < 0) {
 		printf("Can't allocate memory. Exiting.");
@@ -216,12 +216,14 @@ int setidlemap()
 		buf[i] = 0xff;
 
 	// set entire idlemap flags
-	if ((idlefd = open(g_idlepath, O_WRONLY)) < 0) {
+	if ((idlefd = open(g_idlepath, O_WRONLY)) < 0) { // open "/sys/kernel/mm/page_idle/bitmap"
 		perror("Can't write idlemap file");
 		exit(2);
 	}
-	// only sets user memory bits; kernel is silently ignored
 	while (write(idlefd, &buf, sizeof(buf)) > 0) {;}
+
+	for (i = 0; i < sizeof (buf); i++)
+		printf("[%d]=%d\n", i, read())
 
 	close(idlefd);
 
@@ -256,7 +258,11 @@ int loadidlemap()
 	return 0;
 }
 
-
+// Expected signal usage:
+// child process (python script) sends SIGUSR1 to parent process (this program) when it is about to start a lookup
+// parent process clears page table entry flags, then sends SIGUSR1 back to child
+// child performs lookup, then sends SIGUSR1 to parent
+// parent reads page table entry flags, then sends SIGUSR1 back to child
 void signal_handler(int signal_num)
 {
     if (signal_num == SIGUSR1) {
@@ -265,24 +271,12 @@ void signal_handler(int signal_num)
 			unsigned long long set_us;
 			in_lookup = 1;
             num_lookups++;
-			// gettimeofday(&ts1, NULL);
-			setidlemap();
-			// gettimeofday(&ts2, NULL);
-			// set_us = 1000000 * (ts2.tv_sec - ts1.tv_sec) + (ts2.tv_usec - ts1.tv_usec); // 0.8 s
-			// printf("set time  : %.3f s\n", (double)set_us / 1000000);
+			setidlemap(); // set idle flags to 1
         } else {
 			static struct timeval ts3, ts4;
 			unsigned long long read_us;
-			// read idle flags
-			// gettimeofday(&ts3, NULL);
-			loadidlemap();
-			walkmaps(pid, output_file, num_lookups);
-			// gettimeofday(&ts4, NULL);
-
-			// calculate times
-			// read_us = 1000000 * (ts4.tv_sec - ts3.tv_sec) + (ts4.tv_usec - ts3.tv_usec); // 2.4 s
-			// printf("read time : %.3f s\n", (double)read_us / 1000000);
-			// printf("walked pages: %d\n", g_walkedpages);
+			loadidlemap(); // cache page idle map
+			walkmaps(pid, output_file, num_lookups); // read page flags
 			in_lookup = 0;
         }
 		kill(pid, SIGUSR1);
@@ -300,10 +294,10 @@ int main(int argc, char *argv[])
 		exit(0);
 	}
     printf("RUNNING: %s %s\n", argv[1], argv[2]);
-	ppid = getpid();
+	ppid = getpid(); // parent PID
 
 	gettimeofday(&ts0, NULL);
-	pid = fork();
+	pid = fork(); // child PID
 
 	if (pid == -1) {
 		// Fork failed
@@ -311,27 +305,32 @@ int main(int argc, char *argv[])
 		exit(EXIT_FAILURE);
 	} else if (pid == 0) {
 		printf("In child process\n");
-		// Child process
+		
+		// Set child process to run on core 1
 		cpu_set_t cpuset;
 		CPU_ZERO(&cpuset);
-		CPU_SET(1, &cpuset); // Set the child process to run on core 1
+		CPU_SET(1, &cpuset); 
 
 		if (sched_setaffinity(0, sizeof(cpuset), &cpuset) == -1) {
 			perror("sched_setaffinity");
 			exit(EXIT_FAILURE);
 		}
+		
+		// Pass parent PID to child
 		char pid_arg[20];
 		sprintf(pid_arg, "--parent-pid=%d", ppid);
 		execlp(argv[1], argv[1], argv[2], pid_arg, NULL);
+		
 		// If execlp returns, it means it failed
 		perror("execlp");
 		exit(EXIT_FAILURE);
 	} else {
 		printf("In parent process\n");
-		// Parent process
+		
+		// Set parent process to run on core 0
 		cpu_set_t cpuset;
 		CPU_ZERO(&cpuset);
-		CPU_SET(0, &cpuset); // Set the parent process to run on core 0
+		CPU_SET(0, &cpuset);
 
 		if (sched_setaffinity(0, sizeof(cpuset), &cpuset) == -1) {
 			perror("sched_setaffinity");
@@ -350,8 +349,8 @@ int main(int argc, char *argv[])
 			goto out;
 		}
 		
-		signal(SIGUSR1, signal_handler);
-		while (waitpid(pid, NULL, WNOHANG) >= 0) {
+		signal(SIGUSR1, signal_handler); // Set signal handler for SIGUSR1
+		while (waitpid(pid, NULL, WNOHANG) >= 0) { // Loop until child process exits
 			;
 		}
 
