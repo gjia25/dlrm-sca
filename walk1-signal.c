@@ -207,7 +207,6 @@ int walkmaps(pid_t pid, FILE *output_file, int num_lookups)
 
 int setidlemap()
 {
-	char *p;
 	int idlefd, i;
 	// optimized: large writes allowed here:
 	char buf[IDLEMAP_BUF_SIZE];
@@ -223,7 +222,24 @@ int setidlemap()
 	while (write(idlefd, &buf, sizeof(buf)) > 0) {;}
 
 	close(idlefd);
+	
+	char rbuf[IDLEMAP_BUF_SIZE];
 
+	if ((idlefd = open(g_idlepath, O_RDONLY)) < 0) {
+		perror("Can't read idlemap file (second time)");
+		exit(2);
+	}
+	// unfortunately, larger reads do not seem supported
+	if (read(idlefd, &rbuf, IDLEMAP_CHUNK_SIZE) > 0) {
+		for (i = 0; i < sizeof (rbuf); i++)
+			if (rbuf[i] != 0xff) {
+				printf("Not 0xff: %02X\n", (unsigned char)rbuf[i]);
+			}
+	} else {
+		perror("Can't read idlemap file");
+		exit(2);
+	}
+	close(idlefd);
 	return 0;
 }
 
@@ -247,11 +263,6 @@ int loadidlemap()
 	p = g_idlebuf;
 	// unfortunately, larger reads do not seem supported
 	while ((len = read(idlefd, p, IDLEMAP_CHUNK_SIZE)) > 0) {
-		if ((p & 0xFFFFFFFFFFFFFFFFULL) == 0xFFFFFFFFFFFFFFFFULL) {
-		} else {
-			printf("Bytes not all 1s: %016llX\n", (unsigned long long)p);
-		}
-
 		p += IDLEMAP_CHUNK_SIZE;
 		g_idlebufsize += len;
 	}
@@ -274,7 +285,6 @@ void signal_handler(int signal_num)
 			in_lookup = 1;
             num_lookups++;
 			setidlemap(); // set idle flags to 1
-			loadidlemap();
         } else {
 			static struct timeval ts3, ts4;
 			unsigned long long read_us;
