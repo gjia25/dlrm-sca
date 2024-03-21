@@ -221,16 +221,19 @@ int setidlemap()
 		exit(2);
 	}
 	while (write(idlefd, &buf, sizeof(buf)) > 0) {;}
+	printf("finished writes\n");
+	read(idlefd, &rbuf, sizeof(rbuf));
+	printf("first byte of idlemap: %02X\n", rbuf[0]);
 	
-	while (read(idlefd, &rbuf, sizeof(rbuf)) > 0) {
-		for (i = 0; i < sizeof(rbuf); i++) {
-			if (rbuf[i] != 0xff) {
-				printf("Not 0xFF: %02X\n", rbuf[i]);
-			} else {
-				printf(".");
-			}
-		}
-	}
+	// while (read(idlefd, &rbuf, sizeof(rbuf)) > 0) {
+	// 	for (i = 0; i < sizeof(rbuf); i++) {
+	// 		if (rbuf[i] != 0xff) {
+	// 			printf("Not 0xFF: %02X\n", rbuf[i]);
+	// 		} else {
+	// 			printf(".");
+	// 		}
+	// 	}
+	// }
 
 	close(idlefd);
 	return 0;
