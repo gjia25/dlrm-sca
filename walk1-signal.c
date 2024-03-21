@@ -272,6 +272,8 @@ void signal_handler(int signal_num)
 			in_lookup = 1;
             num_lookups++;
 			setidlemap(); // set idle flags to 1
+			loadidlemap();
+			print("%s", g_idlebuf);
         } else {
 			static struct timeval ts3, ts4;
 			unsigned long long read_us;
@@ -279,7 +281,7 @@ void signal_handler(int signal_num)
 			walkmaps(pid, output_file, num_lookups); // read page flags
 			in_lookup = 0;
         }
-		kill(pid, SIGUSR1);
+		// kill(pid, SIGUSR1);
     }
 }
 
