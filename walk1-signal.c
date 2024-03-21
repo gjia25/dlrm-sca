@@ -210,6 +210,7 @@ int setidlemap()
 	int idlefd, i;
 	// optimized: large writes allowed here:
 	char buf[IDLEMAP_BUF_SIZE];
+	char rbuf[IDLEMAP_CHUNK_SIZE];
 
 	for (i = 0; i < sizeof (buf); i++)
 		buf[i] = 0xff;
@@ -220,25 +221,19 @@ int setidlemap()
 		exit(2);
 	}
 	while (write(idlefd, &buf, sizeof(buf)) > 0) {;}
-
-	close(idlefd);
 	
-	char rbuf[IDLEMAP_BUF_SIZE];
-
-	if ((idlefd = open(g_idlepath, O_RDONLY)) < 0) {
-		perror("Can't read idlemap file (second time)");
-		exit(2);
-	}
-	// unfortunately, larger reads do not seem supported
-	if (read(idlefd, &rbuf, IDLEMAP_CHUNK_SIZE) > 0) {
+	while (read(idlefd, &rbuf, IDLEMAP_CHUNK_SIZE) > 0) {
 		for (i = 0; i < sizeof (rbuf); i++)
 			if (rbuf[i] != 0xff) {
-				printf("Not 0xff: %02X\n", (unsigned char)rbuf[i]);
+				printf("Not 0xFF: %02X\n", rbuf[i]);
+			} else {
+				printf(".");
 			}
 	} else {
 		perror("Can't read idlemap file");
 		exit(2);
 	}
+
 	close(idlefd);
 	return 0;
 }
