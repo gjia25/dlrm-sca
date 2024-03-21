@@ -220,31 +220,25 @@ int setidlemap()
 		perror("Can't write idlemap file");
 		exit(2);
 	}
-	off_t offset = lseek(fd, 0, SEEK_CUR);
+	off_t offset = lseek(idlefd, 0, SEEK_CUR);
 	printf("starting to write: offset = %lld\n", (long long)offset);
 
 	while (write(idlefd, &buf, sizeof(buf)) > 0) {;}
 
 	printf("finished writes\n");
-	lseek(pagefd, offset, SEEK_SET);
+	lseek(idlefd, offset, SEEK_SET);
+	offset = lseek(idlefd, 0, SEEK_CUR);
+	printf("starting to read: offset = %lld\n", (long long)offset);
 	read(idlefd, &rbuf, sizeof(rbuf));
-	for (i = 0; i < sizeof(rbuf); i++) {
-		if (rbuf[i] != 0xff) {
-			printf("Not 0xFF: %02X\n", rbuf[i]);
-		} else {
-			printf(".");
+	while (read(idlefd, &rbuf, sizeof(rbuf)) > 0) {
+		for (i = 0; i < sizeof(rbuf); i++) {
+			if (rbuf[i] != 0xff) {
+				printf("Not 0xFF: %02X\n", rbuf[i]);
+			} else {
+				printf(".");
+			}
 		}
 	}
-	
-	// while (read(idlefd, &rbuf, sizeof(rbuf)) > 0) {
-	// 	for (i = 0; i < sizeof(rbuf); i++) {
-	// 		if (rbuf[i] != 0xff) {
-	// 			printf("Not 0xFF: %02X\n", rbuf[i]);
-	// 		} else {
-	// 			printf(".");
-	// 		}
-	// 	}
-	// }
 
 	close(idlefd);
 	return 0;
