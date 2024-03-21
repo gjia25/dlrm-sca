@@ -229,9 +229,6 @@ int setidlemap()
 			} else {
 				printf(".");
 			}
-	} else {
-		perror("Can't read idlemap file");
-		exit(2);
 	}
 
 	close(idlefd);
