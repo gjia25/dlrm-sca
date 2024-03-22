@@ -223,7 +223,7 @@ int setidlemap()
 	off_t offset = lseek(idlefd, 0, SEEK_CUR);
 	printf("starting to write: offset = %lld\n", (long long)offset);
 
-	while (write(idlefd, &buf, sizeof(buf)) > 0) {;}
+	while (write(idlefd, &buf, sizeof(buf)) > 0) { printf("y"); }
 
 	printf("finished writes\n");
 	lseek(idlefd, offset, SEEK_SET);
@@ -234,8 +234,6 @@ int setidlemap()
 		for (i = 0; i < sizeof(rbuf); i++) {
 			if (rbuf[i] != 0xff) {
 				printf("Not 0xFF: %02X\n", rbuf[i]);
-			} else {
-				printf(".");
 			}
 		}
 	}
@@ -270,6 +268,27 @@ int loadidlemap()
 	close(idlefd);
 
 	return 0;
+}
+
+void clear_refs()
+{
+	char refspath[PATHSIZE];
+	sprintf(refspath, "/proc/%d/clear_refs", pid)
+	FILE* fd = fopen(refspath, "wb");
+
+	if (fd == NULL) {
+		perror("Can't open clear_refs file\n");
+		exit(-1);
+	}
+
+	const uint8_t CLEAR_REFS = 1;
+
+	if (fwrite(&clear_refs, 1, sizeof(CLEAR_REFS), fd) != sizeof(CLEAR_REFS)) {
+		perror("Can't write clear_refs file\n");
+		exit(-1);
+	}
+
+	fclose(fd);
 }
 
 // Expected signal usage:
