@@ -36,7 +36,6 @@
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <fcntl.h>
-#include <errno.h>
 
 // see Documentation/vm/pagemap.txt:
 #define PFN_MASK		(~(0x1ffLLU << 55))
@@ -208,40 +207,23 @@ int walkmaps(pid_t pid, FILE *output_file, int num_lookups)
 
 int setidlemap()
 {
-	int idlefd, i, len;
+	char *p;
+	int idlefd, i;
 	// optimized: large writes allowed here:
 	char buf[IDLEMAP_BUF_SIZE];
-	char rbuf[IDLEMAP_CHUNK_SIZE];
 
 	for (i = 0; i < sizeof (buf); i++)
 		buf[i] = 0xff;
 
 	// set entire idlemap flags
-	if ((idlefd = open(g_idlepath, O_RDWR)) < 0) { // open "/sys/kernel/mm/page_idle/bitmap"
+	if ((idlefd = open(g_idlepath, O_WRONLY)) < 0) { // open "/sys/kernel/mm/page_idle/bitmap"
 		perror("Can't write idlemap file");
 		exit(2);
 	}
-	off_t offset = lseek(idlefd, 0, SEEK_CUR);
-	printf("starting to write: offset = %lld\n", (long long)offset);
-
-	while (write(idlefd, &buf, sizeof(buf)) > 0) { printf("y"); }
-
-	printf("finished writes\n");
-	lseek(idlefd, offset, SEEK_SET);
-	offset = lseek(idlefd, 0, SEEK_CUR);
-	printf("starting to read: offset = %lld, size = %d\n", (long long)offset, sizeof(rbuf));
-	int bytes_read = 0;
-	while ((len = read(idlefd, &rbuf, sizeof(rbuf))) > 0) {
-		for (i = 0; i < sizeof(rbuf); i++) {
-			if (rbuf[i] != 0xff) {
-				printf("%02X", rbuf[i]);
-			}
-		}
-		bytes_read += len;
-	}
-	printf("read %d bytes, errno = %d\n",bytes_read,errno);
+	while (write(idlefd, &buf, sizeof(buf)) > 0) {;}
 
 	close(idlefd);
+
 	return 0;
 }
 
@@ -273,27 +255,6 @@ int loadidlemap()
 	return 0;
 }
 
-void clear_refs()
-{
-	char refspath[PATHSIZE];
-	sprintf(refspath, "/proc/%d/clear_refs", pid);
-	FILE* fd = fopen(refspath, "wb");
-
-	if (fd == NULL) {
-		perror("Can't open clear_refs file\n");
-		exit(-1);
-	}
-
-	const uint8_t CLEAR_REFS = 1;
-
-	if (fwrite(&clear_refs, 1, sizeof(CLEAR_REFS), fd) != sizeof(CLEAR_REFS)) {
-		perror("Can't write clear_refs file\n");
-		exit(-1);
-	}
-
-	fclose(fd);
-}
-
 // Expected signal usage:
 // child process (python script) sends SIGUSR1 to parent process (this program) when it is about to start a lookup
 // parent process clears page table entry flags, then sends SIGUSR1 back to child
@@ -308,6 +269,9 @@ void signal_handler(int signal_num)
 			in_lookup = 1;
             num_lookups++;
 			setidlemap(); // set idle flags to 1
+			loadidlemap();
+			walkmaps(pid, output_file, num_lookups);
+			printf("g_walkedpages = %d", g_walkedpages)
         } else {
 			static struct timeval ts3, ts4;
 			unsigned long long read_us;
