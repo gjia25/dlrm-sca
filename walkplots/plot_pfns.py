@@ -43,10 +43,10 @@ with open(filename, "r") as file:
         filepath_to_time_to_vas[filepath][time].add(hex_value_virt)
 
 # Create scatter plot
-def scatterplot(ylabel, filepath_to_time_to_values):
+def scatterplot(ylabel, filepath_to_time_to_values, auto_range=True):
     fig = plt.figure(figsize=(15,9))
     axes = fig.add_subplot(111)
-
+                         
     # ylims
     max_y = 0
     min_y = sys.maxsize
@@ -60,6 +60,40 @@ def scatterplot(ylabel, filepath_to_time_to_values):
             max_y = max(max_y, max(hex_list))
             min_y = min(min_y, min(hex_list))
             print(f"accesses to {filepath} in lookup {time}: {len(hex_list)}")
+        # =============================================================================
+        # When using auto_range, create multiple plots for each range, then combine
+        #  - Makes points more visible when address space is spread out
+        #  - Create new range whenever a space between addresses > 1% entire space
+        # =============================================================================
+        y_ranges = []
+        total_points = len(y)
+        if auto_range:
+            # Sort y, x by y
+            y, x = zip(*sorted(zip(y, x), key=lambda a: a[0]))
+            total_dist = y[-1] - y[0]
+            y_prev = None
+
+            # Separate points into ranges
+            #  - Each range has a y_color dict and a y_range class
+            curr_range = [None, None]
+            points = 0
+            range_low = y[0]
+            for y_pt, x_pt in zip(y, x):
+                if y_prev is not None and y_pt - y_prev > total_dist * 0.01:
+                    # if points/total_points > 0.001:
+                    curr_range = [range_low, y_prev]
+                    y_ranges.append(curr_range)
+                    curr_range = [None, None]
+                    range_low = y_pt
+                    points = 0
+
+                # Iterate and add point to dict
+                y_prev = y_pt
+                points += 1
+            y_ranges.append(curr_range)
+            del y
+            del x
+        
         axes.scatter(x, y, s=2, marker='s', label=filepath)
 
     print(f"min_y: {min_y}, max_y: {max_y}")
