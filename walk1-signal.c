@@ -36,6 +36,7 @@
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <fcntl.h>
+#include <errno.h>
 
 // see Documentation/vm/pagemap.txt:
 #define PFN_MASK		(~(0x1ffLLU << 55))
@@ -207,7 +208,7 @@ int walkmaps(pid_t pid, FILE *output_file, int num_lookups)
 
 int setidlemap()
 {
-	int idlefd, i;
+	int idlefd, i, len;
 	// optimized: large writes allowed here:
 	char buf[IDLEMAP_BUF_SIZE];
 	char rbuf[IDLEMAP_CHUNK_SIZE];
@@ -216,7 +217,7 @@ int setidlemap()
 		buf[i] = 0xff;
 
 	// set entire idlemap flags
-	if ((idlefd = open(g_idlepath, O_WRONLY)) < 0) { // open "/sys/kernel/mm/page_idle/bitmap"
+	if ((idlefd = open(g_idlepath, O_RDWR)) < 0) { // open "/sys/kernel/mm/page_idle/bitmap"
 		perror("Can't write idlemap file");
 		exit(2);
 	}
@@ -228,15 +229,17 @@ int setidlemap()
 	printf("finished writes\n");
 	lseek(idlefd, offset, SEEK_SET);
 	offset = lseek(idlefd, 0, SEEK_CUR);
-	printf("starting to read: offset = %lld\n", (long long)offset);
-	read(idlefd, &rbuf, sizeof(rbuf));
-	while (read(idlefd, &rbuf, sizeof(rbuf)) > 0) {
+	printf("starting to read: offset = %lld, size = %d\n", (long long)offset, sizeof(rbuf));
+	int bytes_read = 0;
+	while ((len = read(idlefd, &rbuf, sizeof(rbuf))) > 0) {
 		for (i = 0; i < sizeof(rbuf); i++) {
 			if (rbuf[i] != 0xff) {
-				printf("Not 0xFF: %02X\n", rbuf[i]);
+				printf("%02X", rbuf[i]);
 			}
 		}
+		bytes_read += len;
 	}
+	printf("read %d bytes, errno = %d\n",bytes_read,errno);
 
 	close(idlefd);
 	return 0;
@@ -273,7 +276,7 @@ int loadidlemap()
 void clear_refs()
 {
 	char refspath[PATHSIZE];
-	sprintf(refspath, "/proc/%d/clear_refs", pid)
+	sprintf(refspath, "/proc/%d/clear_refs", pid);
 	FILE* fd = fopen(refspath, "wb");
 
 	if (fd == NULL) {
