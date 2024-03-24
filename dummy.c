@@ -13,7 +13,7 @@ int main(int argc, char *argv[]) {
     int ppid;
     
     printf("argv[1] = %s\n", argv[1]);
-    sscanf(argv[2], "--parent-pid=%d", ppid);
+    sscanf(argv[2], "--parent-pid=%d", &ppid);
     printf("ppid = %d\n", ppid);
 
     signal(SIGUSR1, signal_handler); // Set signal handler for SIGUSR1
@@ -22,10 +22,10 @@ int main(int argc, char *argv[]) {
         pause();
 
         int n = nums[i];
-        
+
         kill(ppid, SIGUSR1);
         pause();
-        printf("nums[%d] = %d\n", i, n)
+        printf("nums[%d] = %d\n", i, n);
     }
     return 0;
 }

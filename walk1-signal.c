@@ -271,7 +271,7 @@ void signal_handler(int signal_num)
 			setidlemap(); // set idle flags to 1
 			loadidlemap();
 			walkmaps(pid, output_file, num_lookups);
-			printf("g_walkedpages = %d", g_walkedpages)
+			printf("g_walkedpages = %d", g_walkedpages);
         } else {
 			static struct timeval ts3, ts4;
 			unsigned long long read_us;
