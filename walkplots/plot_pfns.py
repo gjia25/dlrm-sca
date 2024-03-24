@@ -5,6 +5,8 @@ import sys
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 
+NUM_LOOKUPS = 26
+
 filename = sys.argv[1]
 filepath_to_time_to_pfns = {}
 filepath_to_time_to_vas = {}
@@ -20,9 +22,8 @@ with open(filename, "r") as file:
     for row in reader:
         if len(row) != 5:
             continue
-        time = int(row[1])
-        if time > 26: # TODO: delete this block for multi batch
-            break
+        time = int(row[1]) % NUM_LOOKUPS or NUM_LOOKUPS
+
         hex_value_virt = int(row[2], 16) # 2 for VA
         hex_value = int(row[3], 16) # 3 for PFN
         filepath = row[4]
@@ -41,12 +42,26 @@ with open(filename, "r") as file:
         if time not in filepath_to_time_to_vas[filepath]:
             filepath_to_time_to_vas[filepath][time] = set()
         filepath_to_time_to_vas[filepath][time].add(hex_value_virt)
+        
+# Remove pages accessed across all lookups
+def remove_repeated_pages(filepath_to_time_to_values):
+    for filepath, time_to_values in filepath_to_time_to_values.items():
+        repeated_values = set.intersection(*time_to_values.values())
+        for time, values in time_to_values.items():
+            time_to_values[time] = values - repeated_values
+
+remove_repeated_pages(filepath_to_time_to_pfns)
+if all((all(len(pfns) == 0) for pfns in time_to_pfns.values()) for time_to_pfns in filepath_to_time_to_pfns.values()):
+    print("No distinct page accesses :(")
+    sys.exit(1)
+remove_repeated_pages(filepath_to_time_to_vas)
+assert all(len(time_to_pfns) == len(time_to_vas) for time_to_pfns, time_to_vas in zip(filepath_to_time_to_pfns.values(), filepath_to_time_to_vas.values()))
 
 # Create scatter plot
-def scatterplot(ylabel, filepath_to_time_to_values, auto_range=True):
+def scatterplot(ylabel, filepath_to_time_to_values):
     fig = plt.figure(figsize=(15,9))
     axes = fig.add_subplot(111)
-                         
+
     # ylims
     max_y = 0
     min_y = sys.maxsize
@@ -60,40 +75,6 @@ def scatterplot(ylabel, filepath_to_time_to_values, auto_range=True):
             max_y = max(max_y, max(hex_list))
             min_y = min(min_y, min(hex_list))
             print(f"accesses to {filepath} in lookup {time}: {len(hex_list)}")
-        # =============================================================================
-        # When using auto_range, create multiple plots for each range, then combine
-        #  - Makes points more visible when address space is spread out
-        #  - Create new range whenever a space between addresses > 1% entire space
-        # =============================================================================
-        y_ranges = []
-        total_points = len(y)
-        if auto_range:
-            # Sort y, x by y
-            y, x = zip(*sorted(zip(y, x), key=lambda a: a[0]))
-            total_dist = y[-1] - y[0]
-            y_prev = None
-
-            # Separate points into ranges
-            #  - Each range has a y_color dict and a y_range class
-            curr_range = [None, None]
-            points = 0
-            range_low = y[0]
-            for y_pt, x_pt in zip(y, x):
-                if y_prev is not None and y_pt - y_prev > total_dist * 0.01:
-                    # if points/total_points > 0.001:
-                    curr_range = [range_low, y_prev]
-                    y_ranges.append(curr_range)
-                    curr_range = [None, None]
-                    range_low = y_pt
-                    points = 0
-
-                # Iterate and add point to dict
-                y_prev = y_pt
-                points += 1
-            y_ranges.append(curr_range)
-            del y
-            del x
-        
         axes.scatter(x, y, s=2, marker='s', label=filepath)
 
     print(f"min_y: {min_y}, max_y: {max_y}")
