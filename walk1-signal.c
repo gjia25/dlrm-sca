@@ -144,10 +144,7 @@ int mapidle(pid_t pid, uint64_t time, unsigned long long mapstart, unsigned long
 			goto out;
 		}
 		idlebits = g_idlebuf[idlemapp];
-		if (g_debug > 1) {
-			printf("R: p %llx pfn %llx idlebits %llx\n",
-			    p[i], pfn, idlebits);
-		}
+		printf("p=%llx pfn=%llx idlebits=%llx\n", p[i], pfn, idlebits);
 
 		if (!(idlebits & (1ULL << (pfn % 64)))) {
 			g_activepages++;
@@ -211,6 +208,8 @@ int setidlemap()
 	int idlefd, i;
 	// optimized: large writes allowed here:
 	char buf[IDLEMAP_BUF_SIZE];
+	ssize_t len;
+	ssize_t bytes_written;
 
 	for (i = 0; i < sizeof (buf); i++)
 		buf[i] = 0xff;
@@ -220,11 +219,13 @@ int setidlemap()
 		perror("Can't write idlemap file");
 		exit(2);
 	}
-	while (write(idlefd, &buf, sizeof(buf)) > 0) {;}
+	while (len = write(idlefd, &buf, sizeof(buf)) > 0) {
+		bytes_written += len;
+	}
 
 	close(idlefd);
 
-	return 0;
+	return bytes_written;
 }
 
 int loadidlemap()
@@ -247,6 +248,7 @@ int loadidlemap()
 	p = g_idlebuf;
 	// unfortunately, larger reads do not seem supported
 	while ((len = read(idlefd, p, IDLEMAP_CHUNK_SIZE)) > 0) {
+		
 		p += IDLEMAP_CHUNK_SIZE;
 		g_idlebufsize += len;
 	}
@@ -264,17 +266,16 @@ void signal_handler(int signal_num)
 {
     if (signal_num == SIGUSR1) {
         if (in_lookup == 0) {
-			static struct timeval ts1, ts2;
-			unsigned long long set_us;
+			ssize_t bytes_written;
 			in_lookup = 1;
             num_lookups++;
-			setidlemap(); // set idle flags to 1
+			bytes_written = setidlemap(); // set idle flags to 1
+			printf("bytes_written = %d, ", bytes_written);
 			loadidlemap();
+			printf("g_idlebufsize = %d\n", g_idlebufsize);
 			walkmaps(pid, output_file, num_lookups);
-			printf("g_walkedpages = %d", g_walkedpages);
+			printf("\ng_walkedpages = %d\n", g_walkedpages);
         } else {
-			static struct timeval ts3, ts4;
-			unsigned long long read_us;
 			loadidlemap(); // cache page idle map
 			walkmaps(pid, output_file, num_lookups); // read page flags
 			in_lookup = 0;
