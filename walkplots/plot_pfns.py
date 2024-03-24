@@ -6,6 +6,8 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 
 NUM_LOOKUPS = 26
+VA_UPPER_BOT = 0x7f0000000000
+VA_LOWER_TOP = 0x100000000000
 
 filename = sys.argv[1]
 filepath_to_time_to_pfns = {}
@@ -51,11 +53,20 @@ def remove_repeated_pages(filepath_to_time_to_values):
             time_to_values[time] = values - repeated_values
 
 remove_repeated_pages(filepath_to_time_to_pfns)
-if all((all(len(pfns) == 0) for pfns in time_to_pfns.values()) for time_to_pfns in filepath_to_time_to_pfns.values()):
+remove_repeated_pages(filepath_to_time_to_vas)
+
+# Check if there are no distinct page accesses
+no_distinct_pfns = True
+no_distinct_vas = True
+for filepath in interest:
+    for time in range(1, NUM_LOOKUPS + 1):
+        print(f"lookup {time}: {len(filepath_to_time_to_pfns[filepath][time])} PFNs, {len(filepath_to_time_to_vas[filepath][time])} VAs, {len(filepath_to_time_to_pfns[filepath][time]) == len(filepath_to_time_to_vas[filepath][time])}")
+        no_distinct_pfns = no_distinct_pfns and len(filepath_to_time_to_pfns[filepath][time]) == 0
+        no_distinct_vas = no_distinct_vas and len(filepath_to_time_to_vas[filepath][time]) == 0
+    
+if no_distinct_pfns and no_distinct_vas:
     print("No distinct page accesses :(")
     sys.exit(1)
-remove_repeated_pages(filepath_to_time_to_vas)
-assert all(len(time_to_pfns) == len(time_to_vas) for time_to_pfns, time_to_vas in zip(filepath_to_time_to_pfns.values(), filepath_to_time_to_vas.values()))
 
 # Create scatter plot
 def scatterplot(ylabel, filepath_to_time_to_values):
@@ -70,6 +81,8 @@ def scatterplot(ylabel, filepath_to_time_to_values):
         x = []
         y = []
         for time, hex_list in time_to_values.items():
+            if len(hex_list) == 0:
+                continue
             x.extend([time] * len(hex_list))
             y.extend(hex_list)
             max_y = max(max_y, max(hex_list))
@@ -84,7 +97,7 @@ def scatterplot(ylabel, filepath_to_time_to_values):
 
     axes.set_xlabel("Lookup #")
     axes.set_ylabel(ylabel)
-    axes.set_title("Page accesses by each embedding lookup")
+    axes.set_title("Distinct page accesses per embedding lookup")
 
     axes.legend(loc='lower center', bbox_to_anchor=(0.5, -0.2), ncol=6, markerscale=4)
 
