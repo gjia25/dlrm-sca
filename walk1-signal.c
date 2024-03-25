@@ -59,9 +59,6 @@
 #define PAGE_OFFSET		0xffff880000000000LLU
 #endif
 
-const int __endian_bit = 1;
-#define is_bigendian() ( (*(char*)&__endian_bit) == 0 )
-
 // globals
 int g_debug = 0;		// 1 == some, 2 == verbose
 int g_activepages = 0;
@@ -216,7 +213,7 @@ int setidlemap(pid_t pid)
 	char line[LINESIZE];
 	int pagefd;
 	size_t len = 0;
-	size_t bytes_written = 0;
+	size_t pages_set = 0;
 
 	char pagepath[PATHSIZE];
 	unsigned long long pagebufsize, offset, i, pagemapp, pfn, idlemapp;
@@ -233,7 +230,7 @@ int setidlemap(pid_t pid)
 		perror("Can't read maps file");
 		exit(2);
 	}
-	if ((idlefile = fopen(g_idlepath, "wb")) == NULL) {
+	if ((idlefile = fopen(g_idlepath, "r+")) == NULL) {
 		perror("Can't read idlemap file");
 		exit(2);
 	}
@@ -284,15 +281,24 @@ int setidlemap(pid_t pid)
 
 			if ((len = fwrite(&bitmap, 1, sizeof(bitmap), idlefile)) != sizeof(bitmap)) {
 				perror("Couldn't set idle bits!");
+			} else {
+				pages_set++;
 			}
-			bytes_written += len;		
+
+			// test bits written
+			uint64_t test_bits;
+			if (fseek(idlefile, idlemapp, SEEK_SET)) {
+				perror("Couldn't seek idle bits!");
+			}
+			fread(&test_bits, 1, sizeof(test_bits), idlefile);
+			printf("idleidx=%d pfn=%llx test_bits=%llx\n", idlemapp / BITMAP_CHUNK_SIZE, pfn, test_bits);
 		}
 	out:
 		close(pagefd);
 	}
 	fclose(mapsfile);
 	fclose(idlefile);
-	return bytes_written;
+	return pages_set;
 }
 
 int loadidlemap()
@@ -312,11 +318,15 @@ int loadidlemap()
 		perror("Can't read idlemap file");
 		exit(2);
 	}
+    if (fseek(idlefile, 0, SEEK_SET)) {
+		perror("Can't reset file offset\n");
+		exit(1);
+    }
 	p = g_idlebuf;
 	// unfortunately, larger reads do not seem supported
 	while (g_idlebufsize < MAX_IDLEMAP_SIZE) {
 		if (len = fread(p, 1, IDLEMAP_CHUNK_SIZE, idlefile) != IDLEMAP_CHUNK_SIZE) {
-			printf("Loaded %d bytes - breaking\n", len);
+			printf("Loaded %d bytes = %llx - breaking\n", len, *p);
 			break;
 		}
 		p++;
@@ -336,19 +346,17 @@ void signal_handler(int signal_num)
 {
     if (signal_num == SIGUSR1) {
         if (g_in_lookup == 0) {
-			ssize_t bytes_written;
+			ssize_t pages_set;
 			g_in_lookup = 1;
             g_num_lookups++;
-			bytes_written = setidlemap(g_pid); // set idle flags to 1
-			printf("bytes_written = %d, ", bytes_written);
+			pages_set = setidlemap(g_pid); // set idle flags to 1
+			printf("pages_set = %d\n", pages_set);
 			loadidlemap(); // cache page idle map
 			walkmaps(g_pid); // read page flags
-			printf("g_walkedpages = %d, ", g_walkedpages);
         } else {
 			g_walkedpages = 0;
 			loadidlemap(); // cache page idle map
 			walkmaps(g_pid); // read page flags
-			printf("g_walkedpages = %d, ", g_walkedpages);
 			g_in_lookup = 0;
         }
 		// kill(g_pid, SIGUSR1);
@@ -360,8 +368,6 @@ int main(int argc, char *argv[])
 	int status, err = 0;
 	double mbytes;
 	pid_t ppid;
-
-	printf("Big endian? %d\n", is_bigendian());
 	
 	// options
 	if (argc < 3) {
