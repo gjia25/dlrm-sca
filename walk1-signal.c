@@ -70,6 +70,7 @@ static struct timeval g_ts0;
 FILE* g_output_file;
 int g_in_lookup = 0;
 int g_num_lookups = 0;
+pid_t g_pid;
 
 /*
  * This code must operate on bits in the pageidle bitmap and process pagemap.
@@ -272,11 +273,11 @@ void signal_handler(int signal_num)
         } else {
 			g_walkedpages = 0;
 			loadidlemap(); // cache page idle map
-			walkmaps(pid); // read page flags
+			walkmaps(g_pid); // read page flags
 			printf("g_walkedpages = %d, ", g_walkedpages);
 			g_in_lookup = 0;
         }
-		kill(pid, SIGUSR1);
+		kill(g_pid, SIGUSR1);
     }
 }
 
@@ -284,7 +285,7 @@ int main(int argc, char *argv[])
 {
 	int status, err = 0;
 	double mbytes;
-	pid_t pid, ppid;
+	pid_t ppid;
 	
 	// options
 	if (argc < 3) {
@@ -295,13 +296,13 @@ int main(int argc, char *argv[])
 	ppid = getpid(); // parent PID
 
 	gettimeofday(&g_ts0, NULL);
-	pid = fork(); // child PID
+	g_pid = fork(); // child PID
 
-	if (pid == -1) {
+	if (g_pid == -1) {
 		// Fork failed
 		perror("fork");
 		exit(EXIT_FAILURE);
-	} else if (pid == 0) {
+	} else if (g_pid == 0) {
 		printf("In child process\n");
 		
 		// Set child process to run on core 1
@@ -335,7 +336,7 @@ int main(int argc, char *argv[])
 			exit(EXIT_FAILURE);
 		}
 
-		printf("Parent: Watching PID %d page references...\n", pid);
+		printf("Parent: Watching PID %d page references...\n", g_pid);
 		
 		// Open output file for appending
 		char filename[PATHSIZE];
@@ -348,7 +349,7 @@ int main(int argc, char *argv[])
 		}
 		
 		signal(SIGUSR1, signal_handler); // Set signal handler for SIGUSR1
-		while (waitpid(pid, NULL, WNOHANG) >= 0) { // Loop until child process exits
+		while (waitpid(g_pid, NULL, WNOHANG) >= 0) { // Loop until child process exits
 			;
 		}
 
