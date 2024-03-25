@@ -147,7 +147,7 @@ int mapidle(pid_t pid, uint64_t time, unsigned long long mapstart, unsigned long
 			goto out;
 		}
 		idlebits = g_idlebuf[idleidx];
-		printf("g_idlebufsize=%d idleidx=%d p=%llx pfn=%llx idlebits=%llx\n", g_idlebufsize, idleidx, p[i], pfn, idlebits);
+		// printf("g_idlebufsize=%d idleidx=%d p=%llx pfn=%llx idlebits=%llx\n", g_idlebufsize, idleidx, p[i], pfn, idlebits);
 
 		if (!(idlebits & (1ULL << (pfn % 64)))) {
 			g_activepages++;
@@ -284,14 +284,6 @@ int setidlemap(pid_t pid)
 			} else {
 				pages_set++;
 			}
-
-			// test bits written
-			uint64_t test_bits;
-			if (fseek(idlefile, idlemapp, SEEK_SET)) {
-				perror("Couldn't seek idle bits!");
-			}
-			fread(&test_bits, 1, sizeof(test_bits), idlefile);
-			printf("idleidx=%d pfn=%llx test_bits=%llx\n", idlemapp / BITMAP_CHUNK_SIZE, pfn, test_bits);
 		}
 	out:
 		close(pagefd);
@@ -351,15 +343,14 @@ void signal_handler(int signal_num)
             g_num_lookups++;
 			pages_set = setidlemap(g_pid); // set idle flags to 1
 			printf("pages_set = %d\n", pages_set);
-			loadidlemap(); // cache page idle map
-			walkmaps(g_pid); // read page flags
         } else {
 			g_walkedpages = 0;
 			loadidlemap(); // cache page idle map
 			walkmaps(g_pid); // read page flags
 			g_in_lookup = 0;
+			printf("g_walkedpages = %d\n", g_walkedpages);
         }
-		// kill(g_pid, SIGUSR1);
+		kill(g_pid, SIGUSR1);
     }
 }
 
