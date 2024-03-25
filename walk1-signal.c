@@ -81,7 +81,7 @@ int num_lookups = 0;
  * and then process them with load/stores. Much faster, at the cost of some memory.
  */
 
-int mapidle(pid_t pid, uint64_t time, unsigned long long mapstart, unsigned long long mapend, const char *filepath, FILE *output_file, int num_lookups)
+int mapidle(pid_t pid, int setting_bits, uint64_t time, unsigned long long mapstart, unsigned long long mapend, const char *filepath, FILE *output_file, int num_lookups)
 {
 	char pagepath[PATHSIZE];
 	int pagefd;
@@ -92,6 +92,8 @@ int mapidle(pid_t pid, uint64_t time, unsigned long long mapstart, unsigned long
 	unsigned long long *pagebuf, *p;
 	unsigned long long pagebufsize;
 	ssize_t len;
+	FILE *idlefile;
+	uint64_t bitmap = 0xffffffffffffffff;
 	
 	// XXX: handle huge pages
 	pagesize = getpagesize();
@@ -100,24 +102,24 @@ int mapidle(pid_t pid, uint64_t time, unsigned long long mapstart, unsigned long
 	if ((pagebuf = malloc(pagebufsize)) == NULL) {
 		printf("Can't allocate memory for pagemap buf (%lld bytes)",
 		    pagebufsize);
-		return 1;
+		return -1;
 	}
 
 	// open pagemap for virtual to PFN translation
 	if (sprintf(pagepath, "/proc/%d/pagemap", pid) < 0) {
 		printf("Can't allocate memory.");
-		return 1;
+		return -1;
 	}
 	if ((pagefd = open(pagepath, O_RDONLY)) < 0) {
 		perror("Can't read pagemap file");
-		return 2;
+		return -2;
 	}
 
 	// cache pagemap to get PFN, then operate on PFN from idlemap
 	offset = PAGEMAP_CHUNK_SIZE * mapstart / pagesize;
 	if (lseek(pagefd, offset, SEEK_SET) < 0) {
 		printf("Can't seek pagemap file\n");
-		err = 1;
+		err = -1;
 		goto out;
 	}
 	p = pagebuf;
@@ -125,7 +127,13 @@ int mapidle(pid_t pid, uint64_t time, unsigned long long mapstart, unsigned long
 	// optimized: read this in one syscall
 	if (read(pagefd, p, pagebufsize) < 0) {
 		perror("Read page map failed.");
-		err = 1;
+		err = -1;
+		goto out;
+	}
+
+	if (setting_bits && (idlefile = fopen(g_idlepath, "wb")) == NULL) {
+		perror("Can't open idlemap file");
+		err = -2;
 		goto out;
 	}
 
@@ -135,24 +143,37 @@ int mapidle(pid_t pid, uint64_t time, unsigned long long mapstart, unsigned long
 		pfn = p[i] & PFN_MASK;
 		if (pfn == 0)
 			continue;
-
-		// read idle bit
 		idlemapp = (pfn / 64) * BITMAP_CHUNK_SIZE;
-		if (idlemapp > g_idlebufsize) {
-			printf("ERROR: bad PFN read from page map.\n");
-			err = 1;
-			goto out;
-		}
-		idlebits = g_idlebuf[idlemapp];
-		printf("p=%llx pfn=%llx idlebits=%llx\n", p[i], pfn, idlebits);
+		if (setting_bits) { // setting idle bits to 1s
+			if (fseek(idlefile, idlemapp, SEEK_SET)) {
+				printf("Can't seek idlemap file\n");
+				err = -1;
+				goto out;
+			}
+			if (fwrite(&bitmap, 1, sizeof(bitmap), idlefile) != sizeof(bitmap)) {
+				printf("Can't write idlemap file\n");
+				err = -1;
+				goto out;
+			}
+			err += sizeof(bitmap);
+		} else { // reading idle bit
+			if (idlemapp > g_idlebufsize) {
+				printf("ERROR: bad PFN read from page map.\n");
+				err = -1;
+				goto out;
+			}
+			idlebits = g_idlebuf[idlemapp];
+			printf("p=%llx pfn=%llx idlebits=%llx\n", p[i], pfn, idlebits);
 
-		if (!(idlebits & (1ULL << (pfn % 64)))) {
-			g_activepages++;
+			if (!(idlebits & (1ULL << (pfn % 64)))) {
+				g_activepages++;
 
-			// Append pfn, filepath, and current time to the output file
-			fprintf(output_file, "%llu,%d,%llx,%llx,%s\n", time, num_lookups, vaddr, pfn, filepath);
+				// Append pfn, filepath, and current time to the output file
+				fprintf(output_file, "%llu,%d,%llx,%llx,%s\n", time, num_lookups, vaddr, pfn, filepath);
+			}
+			g_walkedpages++;
 		}
-		g_walkedpages++;
+
 	}
 
 out:
@@ -160,7 +181,7 @@ out:
 	return err;
 }
 
-int walkmaps(pid_t pid, FILE *output_file, int num_lookups)
+int walkmaps(pid_t pid, int setting_bits, FILE *output_file, int num_lookups)
 {
 	FILE *mapsfile;
 	char mapspath[PATHSIZE];
@@ -170,6 +191,7 @@ int walkmaps(pid_t pid, FILE *output_file, int num_lookups)
 	char filepath[PATHSIZE];
 	static struct timeval curr_ts;
 	uint64_t time;
+	int ret;
 
 	// get time since start
 	gettimeofday(&curr_ts, NULL);
@@ -191,7 +213,7 @@ int walkmaps(pid_t pid, FILE *output_file, int num_lookups)
 			printf("MAP %llx-%llx %s\n", mapstart, mapend, filepath);
 		if (mapstart > PAGE_OFFSET)
 			continue;	// page idle tracking is user mem only
-		if (mapidle(pid, time, mapstart, mapend, filepath, output_file, num_lookups)) {
+		if ((ret = mapidle(pid, setting_bits, time, mapstart, mapend, filepath, output_file, num_lookups) < 0)) {
 			printf("Error setting map %llx-%llx. Exiting.\n",
 			    mapstart, mapend);
 		}
@@ -199,7 +221,7 @@ int walkmaps(pid_t pid, FILE *output_file, int num_lookups)
 
 	fclose(mapsfile);
 
-	return 0;
+	return ret;
 }
 
 int setidlemap()
@@ -209,7 +231,7 @@ int setidlemap()
 	// optimized: large writes allowed here:
 	char buf[IDLEMAP_BUF_SIZE];
 	ssize_t len;
-	ssize_t bytes_written;
+	ssize_t bytes_written = 0;
 
 	for (i = 0; i < sizeof (buf); i++)
 		buf[i] = 0xff;
@@ -269,15 +291,11 @@ void signal_handler(int signal_num)
 			ssize_t bytes_written;
 			in_lookup = 1;
             num_lookups++;
-			bytes_written = setidlemap(); // set idle flags to 1
-			printf("bytes_written = %d, ", bytes_written);
-			loadidlemap();
-			printf("g_idlebufsize = %d\n", g_idlebufsize);
-			walkmaps(pid, output_file, num_lookups);
-			printf("\ng_walkedpages = %d\n", g_walkedpages);
+			bytes_written = walkmaps(pid, 1, output_file, num_lookups); // set idle flags to 1
+			printf("wrote %d bytes to idle map", bytes_written);
         } else {
 			loadidlemap(); // cache page idle map
-			walkmaps(pid, output_file, num_lookups); // read page flags
+			walkmaps(pid, 0, output_file, num_lookups); // read idle flags
 			in_lookup = 0;
         }
 		// kill(pid, SIGUSR1);
