@@ -58,6 +58,9 @@
 #define PAGE_OFFSET		0xffff880000000000LLU
 #endif
 
+const int __endian_bit = 1;
+#define is_bigendian() ( (*(char*)&__endian_bit) == 0 )
+
 // globals
 int g_debug = 0;		// 1 == some, 2 == verbose
 int g_activepages = 0;
@@ -92,9 +95,11 @@ int mapidle(pid_t pid, uint64_t time, unsigned long long mapstart, unsigned long
 	unsigned long long pagebufsize;
 	ssize_t len;
 	
+	// sanity check
+	assert(sizeof(unsigned long long) == PAGEMAP_CHUNK_SIZE);
+
 	// XXX: handle huge pages
 	pagesize = getpagesize();
-
 	pagebufsize = (PAGEMAP_CHUNK_SIZE * (mapend - mapstart)) / pagesize;
 	if ((pagebuf = malloc(pagebufsize)) == NULL) {
 		printf("Can't allocate memory for pagemap buf (%lld bytes)",
@@ -128,7 +133,7 @@ int mapidle(pid_t pid, uint64_t time, unsigned long long mapstart, unsigned long
 		goto out;
 	}
 
-	for (i = 0; i < pagebufsize / sizeof (unsigned long long); i++) {
+	for (i = 0; i < pagebufsize / PAGEMAP_CHUNK_SIZE; i++) {
 		vaddr = mapstart + i * pagesize;
 		// convert virtual address p to physical PFN
 		pfn = p[i] & PFN_MASK;
@@ -201,29 +206,88 @@ int walkmaps(pid_t pid)
 	return 0;
 }
 
-int setidlemap()
+int setidlemap(pid_t pid, unsigned long long mapstart, unsigned long long mapend)
 {
-	char *p;
-	int idlefd, i;
-	// optimized: large writes allowed here:
-	char buf[IDLEMAP_BUF_SIZE];
-	ssize_t len;
-	ssize_t bytes_written;
+	FILE *mapsfile, *idlefile;
+	char mapspath[PATHSIZE];
+	char line[LINESIZE];
+	size_t len = 0;
+	size_t bytes_written = 0;
+	unsigned long long mapstart, mapend;
 
-	for (i = 0; i < sizeof (buf); i++)
-		buf[i] = 0xff;
-
-	// set entire idlemap flags
-	if ((idlefd = open(g_idlepath, O_WRONLY)) < 0) { // open "/sys/kernel/mm/page_idle/bitmap"
-		perror("Can't write idlemap file");
+	char pagepath[PATHSIZE];
+	int pagesize = getpagesize();
+	uint64_t bitmap = 0xffffffffffffffff;
+	
+	// read virtual mappings
+	if (sprintf(mapspath, "/proc/%d/maps", pid) < 0) {
+		perror("Can't allocate memory for mapspath.");
+		exit(1);
+	}
+	if ((mapsfile = fopen(mapspath, "r")) == NULL) {
+		perror("Can't read maps file");
 		exit(2);
 	}
-	while (len = write(idlefd, &buf, sizeof(buf)) > 0) {
-		bytes_written += len;
+	if ((idlefile = fopen(g_idlepath, "wb")) == NULL) {
+		perror("Can't read idlemap file");
+		exit(2);
 	}
+	while (fgets(line, sizeof (line), mapsfile) != NULL) {
+		sscanf(line, "%llx-%llx", &mapstart, &mapend);
+		if (mapstart > PAGE_OFFSET)
+			continue;	// page idle tracking is user mem only
+		
+		// allocate buffer for reading pfns
+		pagebufsize = (PAGEMAP_CHUNK_SIZE * (mapend - mapstart)) / pagesize;
+		if ((pagebuf = malloc(pagebufsize)) == NULL) {
+			perror("Can't allocate memory for pagemap buf (%lld bytes)", pagebufsize);
+			exit(1);
+		}
+		// open pagemap for virtual to PFN translation
+		if (sprintf(pagepath, "/proc/%d/pagemap", pid) < 0) {
+			perror("Can't allocate memory for pagepath.");
+			exit(1);
+		}
+		if ((pagefd = open(pagepath, O_RDONLY)) < 0) {
+			perror("Can't read pagemap file");
+			exit(2);
+		}
+		// cache pagemap to get PFN, then operate on PFN from idlemap
+		offset = PAGEMAP_CHUNK_SIZE * mapstart / pagesize;
+		if (lseek(pagefd, offset, SEEK_SET) < 0) {
+			printf("Can't seek pagemap file\n");
+			goto out;
+		}
+		p = pagebuf;
+		// optimized: read this in one syscall
+		if (read(pagefd, p, pagebufsize) < 0) {
+			perror("Read page map failed.");
+			goto out;
+		}
 
-	close(idlefd);
+		for (i = 0; i < pagebufsize / sizeof (unsigned long long); i++) {
+			vaddr = mapstart + i * pagesize;
+			// convert virtual address p to physical PFN
+			pfn = p[i] & PFN_MASK;
+			if (pfn == 0)
+				continue;
 
+			// write idle bits
+			idlemapp = (pfn / 64) * BITMAP_CHUNK_SIZE;
+			if (fseek(idlefile, idlemapp, SEEK_SET)) {
+				printf("Couldn't seek idle bits!");
+			}
+
+			if ((len = fwrite(&bitmap, 1, sizeof(bitmap), fd)) != sizeof(bitmap)) {
+				perror("Couldn't set idle bits!");
+			}
+			bytes_written += len;		
+		}
+	out:
+		close(pagefd);
+	}
+	fclose(mapsfile);
+	fclose(idlefile);
 	return bytes_written;
 }
 
@@ -270,6 +334,9 @@ void signal_handler(int signal_num)
             g_num_lookups++;
 			bytes_written = setidlemap(); // set idle flags to 1
 			printf("bytes_written = %d, ", bytes_written);
+			loadidlemap(); // cache page idle map
+			walkmaps(g_pid); // read page flags
+			printf("g_walkedpages = %d, ", g_walkedpages);
         } else {
 			g_walkedpages = 0;
 			loadidlemap(); // cache page idle map
@@ -286,6 +353,8 @@ int main(int argc, char *argv[])
 	int status, err = 0;
 	double mbytes;
 	pid_t ppid;
+
+	printf("is big endian? %d\nPFN_MASK = %llu\n", is_bigendian(), PFN_MASK);
 	
 	// options
 	if (argc < 3) {
