@@ -206,16 +206,19 @@ int walkmaps(pid_t pid)
 	return 0;
 }
 
-int setidlemap(pid_t pid, unsigned long long mapstart, unsigned long long mapend)
+int setidlemap(pid_t pid)
 {
 	FILE *mapsfile, *idlefile;
 	char mapspath[PATHSIZE];
+	unsigned long long mapstart, mapend;
 	char line[LINESIZE];
+	int pagefd;
 	size_t len = 0;
 	size_t bytes_written = 0;
-	unsigned long long mapstart, mapend;
 
 	char pagepath[PATHSIZE];
+	unsigned long long pagebufsize, offset, i, pagemapp, pfn, idlemapp;
+	unsigned long long *pagebuf, *p;
 	int pagesize = getpagesize();
 	uint64_t bitmap = 0xffffffffffffffff;
 	
@@ -240,7 +243,7 @@ int setidlemap(pid_t pid, unsigned long long mapstart, unsigned long long mapend
 		// allocate buffer for reading pfns
 		pagebufsize = (PAGEMAP_CHUNK_SIZE * (mapend - mapstart)) / pagesize;
 		if ((pagebuf = malloc(pagebufsize)) == NULL) {
-			perror("Can't allocate memory for pagemap buf (%lld bytes)", pagebufsize);
+			perror("Can't allocate memory for pagemap buf.");
 			exit(1);
 		}
 		// open pagemap for virtual to PFN translation
@@ -255,7 +258,7 @@ int setidlemap(pid_t pid, unsigned long long mapstart, unsigned long long mapend
 		// cache pagemap to get PFN, then operate on PFN from idlemap
 		offset = PAGEMAP_CHUNK_SIZE * mapstart / pagesize;
 		if (lseek(pagefd, offset, SEEK_SET) < 0) {
-			printf("Can't seek pagemap file\n");
+			perror("Can't seek pagemap file.");
 			goto out;
 		}
 		p = pagebuf;
@@ -266,7 +269,6 @@ int setidlemap(pid_t pid, unsigned long long mapstart, unsigned long long mapend
 		}
 
 		for (i = 0; i < pagebufsize / sizeof (unsigned long long); i++) {
-			vaddr = mapstart + i * pagesize;
 			// convert virtual address p to physical PFN
 			pfn = p[i] & PFN_MASK;
 			if (pfn == 0)
@@ -275,10 +277,10 @@ int setidlemap(pid_t pid, unsigned long long mapstart, unsigned long long mapend
 			// write idle bits
 			idlemapp = (pfn / 64) * BITMAP_CHUNK_SIZE;
 			if (fseek(idlefile, idlemapp, SEEK_SET)) {
-				printf("Couldn't seek idle bits!");
+				perror("Couldn't seek idle bits!");
 			}
 
-			if ((len = fwrite(&bitmap, 1, sizeof(bitmap), fd)) != sizeof(bitmap)) {
+			if ((len = fwrite(&bitmap, 1, sizeof(bitmap), idlefile)) != sizeof(bitmap)) {
 				perror("Couldn't set idle bits!");
 			}
 			bytes_written += len;		
@@ -332,7 +334,7 @@ void signal_handler(int signal_num)
 			ssize_t bytes_written;
 			g_in_lookup = 1;
             g_num_lookups++;
-			bytes_written = setidlemap(); // set idle flags to 1
+			bytes_written = setidlemap(g_pid); // set idle flags to 1
 			printf("bytes_written = %d, ", bytes_written);
 			loadidlemap(); // cache page idle map
 			walkmaps(g_pid); // read page flags
