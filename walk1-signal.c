@@ -24,6 +24,7 @@
 
 #define _GNU_SOURCE
 
+#include <assert.h>
 #include <sched.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -38,7 +39,7 @@
 #include <fcntl.h>
 
 // see Documentation/vm/pagemap.txt:
-#define PFN_MASK		(~(0x1ffLLU << 55))
+#define PFN_MASK		0x7fffffffffffff
 
 #define PATHSIZE		128
 #define LINESIZE		256
@@ -88,7 +89,7 @@ int mapidle(pid_t pid, uint64_t time, unsigned long long mapstart, unsigned long
 	char pagepath[PATHSIZE];
 	int pagefd;
 	char *line;
-	unsigned long long offset, i, pagemapp, pfn, vaddr, idlemapp, idlebits;
+	unsigned long long offset, i, pagemapp, pfn, vaddr, idlemapp, idleidx, idlebits;
 	int pagesize;
 	int err = 0;
 	unsigned long long *pagebuf, *p;
@@ -142,13 +143,14 @@ int mapidle(pid_t pid, uint64_t time, unsigned long long mapstart, unsigned long
 
 		// read idle bit
 		idlemapp = (pfn / 64) * BITMAP_CHUNK_SIZE;
-		if (idlemapp > g_idlebufsize) {
+		idleidx = idlemapp / sizeof (unsigned long long); // index into g_idlebuf
+		if (idleidx  > g_idlebufsize) {
 			printf("ERROR: bad PFN read from page map.\n");
 			err = 1;
 			goto out;
 		}
-		idlebits = g_idlebuf[idlemapp];
-		printf("p=%llx pfn=%llx idlebits=%llx\n", p[i], pfn, idlebits);
+		idlebits = g_idlebuf[idleidx];
+		printf("g_idlebufsize=%d idleidx=%d p=%llx pfn=%llx idlebits=%llx\n", g_idlebufsize, idleidx, p[i], pfn, idlebits);
 
 		if (!(idlebits & (1ULL << (pfn % 64)))) {
 			g_activepages++;
@@ -296,7 +298,7 @@ int setidlemap(pid_t pid)
 int loadidlemap()
 {
 	unsigned long long *p;
-	int idlefd;
+	FILE *idlefile;
 	ssize_t len;
 
 	if ((g_idlebuf = malloc(MAX_IDLEMAP_SIZE)) == NULL) {
@@ -306,18 +308,21 @@ int loadidlemap()
 	}
 
 	// copy (snapshot) idlemap to memory
-	if ((idlefd = open(g_idlepath, O_RDONLY)) < 0) {
+	if ((idlefile = fopen(g_idlepath, "rb")) == NULL) {
 		perror("Can't read idlemap file");
 		exit(2);
 	}
 	p = g_idlebuf;
 	// unfortunately, larger reads do not seem supported
-	while ((len = read(idlefd, p, IDLEMAP_CHUNK_SIZE)) > 0) {
-		
-		p += IDLEMAP_CHUNK_SIZE;
-		g_idlebufsize += len;
+	while (g_idlebufsize < MAX_IDLEMAP_SIZE) {
+		if (len = fread(p, 1, IDLEMAP_CHUNK_SIZE, idlefile) != IDLEMAP_CHUNK_SIZE) {
+			printf("Loaded %d bytes - breaking\n", len);
+			break;
+		}
+		p++;
+		g_idlebufsize += IDLEMAP_CHUNK_SIZE;
 	}
-	close(idlefd);
+	fclose(idlefile);
 
 	return 0;
 }
@@ -346,7 +351,7 @@ void signal_handler(int signal_num)
 			printf("g_walkedpages = %d, ", g_walkedpages);
 			g_in_lookup = 0;
         }
-		kill(g_pid, SIGUSR1);
+		// kill(g_pid, SIGUSR1);
     }
 }
 
@@ -356,7 +361,7 @@ int main(int argc, char *argv[])
 	double mbytes;
 	pid_t ppid;
 
-	printf("is big endian? %d\nPFN_MASK = %llu\n", is_bigendian(), PFN_MASK);
+	printf("Big endian? %d\n", is_bigendian());
 	
 	// options
 	if (argc < 3) {
