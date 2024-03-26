@@ -141,7 +141,7 @@ int mapidle(pid_t pid, uint64_t time, unsigned long long mapstart, unsigned long
 		// read idle bit
 		idlemapp = (pfn / 64) * BITMAP_CHUNK_SIZE;
 		idleidx = idlemapp / sizeof (unsigned long long); // index into g_idlebuf
-		if (idleidx  > g_idlebufsize) {
+		if (idlemapp  > g_idlebufsize) {
 			printf("ERROR: bad PFN read from page map.\n");
 			err = 1;
 			goto out;
@@ -205,92 +205,36 @@ int walkmaps(pid_t pid)
 	return 0;
 }
 
-int setidlemap(pid_t pid)
+int setidlemap()
 {
-	FILE *mapsfile, *idlefile;
-	char mapspath[PATHSIZE];
-	unsigned long long mapstart, mapend;
-	char line[LINESIZE];
-	int pagefd;
-	size_t len = 0;
-	size_t pages_set = 0;
+	FILE *idlefile
+	int entries_written;
+	long filesize, offset = 0;
+	unsigned long long bitmap = 0xffffffffffffffff;
 
-	char pagepath[PATHSIZE];
-	unsigned long long pagebufsize, offset, i, pagemapp, pfn, idlemapp;
-	unsigned long long *pagebuf, *p;
-	int pagesize = getpagesize();
-	uint64_t bitmap = 0xffffffffffffffff;
-	
-	// read virtual mappings
-	if (sprintf(mapspath, "/proc/%d/maps", pid) < 0) {
-		perror("Can't allocate memory for mapspath.");
-		exit(1);
-	}
-	if ((mapsfile = fopen(mapspath, "r")) == NULL) {
-		perror("Can't read maps file");
-		exit(2);
-	}
-	if ((idlefile = fopen(g_idlepath, "r+")) == NULL) {
-		perror("Can't read idlemap file");
-		exit(2);
-	}
-	while (fgets(line, sizeof (line), mapsfile) != NULL) {
-		sscanf(line, "%llx-%llx", &mapstart, &mapend);
-		if (mapstart > PAGE_OFFSET)
-			continue;	// page idle tracking is user mem only
-		
-		// allocate buffer for reading pfns
-		pagebufsize = (PAGEMAP_CHUNK_SIZE * (mapend - mapstart)) / pagesize;
-		if ((pagebuf = malloc(pagebufsize)) == NULL) {
-			perror("Can't allocate memory for pagemap buf.");
-			exit(1);
-		}
-		// open pagemap for virtual to PFN translation
-		if (sprintf(pagepath, "/proc/%d/pagemap", pid) < 0) {
-			perror("Can't allocate memory for pagepath.");
-			exit(1);
-		}
-		if ((pagefd = open(pagepath, O_RDONLY)) < 0) {
-			perror("Can't read pagemap file");
-			exit(2);
-		}
-		// cache pagemap to get PFN, then operate on PFN from idlemap
-		offset = PAGEMAP_CHUNK_SIZE * mapstart / pagesize;
-		if (lseek(pagefd, offset, SEEK_SET) < 0) {
-			perror("Can't seek pagemap file.");
+    if (idlefile = fopen(g_idlepath, "wb") == NULL) { // O_SYNC for immediate write
+        perror("Can't open idlemap");
+        exit(1);
+    }
+
+	fseek(idlefile, 0, SEEK_END);
+	long filesize = ftell(file);
+
+    while (offset < filesize) {
+		if (fseek(idlefile, offset, SEEK_SET)) {
+			perror("Can't seek idlemap");
 			goto out;
 		}
-		p = pagebuf;
-		// optimized: read this in one syscall
-		if (read(pagefd, p, pagebufsize) < 0) {
-			perror("Read page map failed.");
-			goto out;
+        if (fwrite(&bitmap, 1, sizeof(bitmap), idlefile) != sizeof(bitmap)) {
+            perror("Error writing entry: skipped");
+        } else {
+			entries_written++;
 		}
-
-		for (i = 0; i < pagebufsize / sizeof (unsigned long long); i++) {
-			// convert virtual address p to physical PFN
-			pfn = p[i] & PFN_MASK;
-			if (pfn == 0)
-				continue;
-
-			// write idle bits
-			idlemapp = (pfn / 64) * BITMAP_CHUNK_SIZE;
-			if (fseek(idlefile, idlemapp, SEEK_SET)) {
-				perror("Couldn't seek idle bits!");
-			}
-
-			if ((len = fwrite(&bitmap, 1, sizeof(bitmap), idlefile)) != sizeof(bitmap)) {
-				perror("Couldn't set idle bits!");
-			} else {
-				pages_set++;
-			}
-		}
-	out:
-		close(pagefd);
-	}
-	fclose(mapsfile);
-	fclose(idlefile);
-	return pages_set;
+		offset += sizeof(bitmap);
+    }
+out:
+    close(fd);
+    return entries_written;
 }
 
 int loadidlemap()
