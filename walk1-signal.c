@@ -282,11 +282,11 @@ void signal_handler(int signal_num)
 {
     if (signal_num == SIGUSR1) {
         if (g_in_lookup == 0) {
-			ssize_t pages_set;
+			ssize_t entries_written;
 			g_in_lookup = 1;
             g_num_lookups++;
-			pages_set = setidlemap(g_pid); // set idle flags to 1
-			printf("pages_set = %d\n", pages_set);
+			entries_written = setidlemap(g_pid); // set idle flags to 1
+			printf("entries_written = %d\n", entries_written);
         } else {
 			g_walkedpages = 0;
 			loadidlemap(); // cache page idle map
