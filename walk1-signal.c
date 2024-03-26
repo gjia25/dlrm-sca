@@ -212,7 +212,7 @@ int setidlemap()
 	long filesize, offset = 0;
 	unsigned long long bitmap = 0xffffffffffffffff;
 
-    if (idlefile = fopen(g_idlepath, "wb") == NULL) { // O_SYNC for immediate write
+    if ((idlefile = fopen(g_idlepath, "wb")) == NULL) { // O_SYNC for immediate write
         perror("Can't open idlemap");
         exit(1);
     }
@@ -233,6 +233,7 @@ int setidlemap()
 		offset += sizeof(bitmap);
     }
 out:
+	fflush(idlefile);
     fclose(idlefile);
     return entries_written;
 }
