@@ -207,7 +207,7 @@ int walkmaps(pid_t pid)
 
 int setidlemap()
 {
-	FILE *idlefile
+	FILE *idlefile;
 	int entries_written;
 	long filesize, offset = 0;
 	unsigned long long bitmap = 0xffffffffffffffff;
@@ -218,7 +218,7 @@ int setidlemap()
     }
 
 	fseek(idlefile, 0, SEEK_END);
-	long filesize = ftell(file);
+	filesize = ftell(idlefile);
 
     while (offset < filesize) {
 		if (fseek(idlefile, offset, SEEK_SET)) {
@@ -233,7 +233,7 @@ int setidlemap()
 		offset += sizeof(bitmap);
     }
 out:
-    close(fd);
+    fclose(idlefile);
     return entries_written;
 }
 
