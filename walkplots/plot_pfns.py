@@ -5,13 +5,14 @@ import sys
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 
-NUM_LOOKUPS = 26
+NUM_LOOKUPS = 3
+NUM_RUNS = 1
 VA_UPPER_BOT = 0x7f0000000000
 VA_LOWER_TOP = 0x100000000000
 
 filename = sys.argv[1]
-filepath_to_time_to_pfns = {}
-filepath_to_time_to_vas = {}
+lst_filepath_to_time_to_pfns = [{} for _ in range(NUM_RUNS)]
+lst_filepath_to_time_to_vas = [{} for _ in range(NUM_RUNS)]
 
 prefixes = ["/usr/lib/", "/usr/bin/", "/home/gjia/yolo/venv/lib/python3.10/site-packages/"]
 interest = ["[heap]", "[stack]"]
@@ -24,6 +25,10 @@ with open(filename, "r") as file:
     for row in reader:
         if len(row) != 5:
             continue
+        if NUM_RUNS <= 1:
+            run = 0
+        else:
+            run = int(row[1]) // NUM_LOOKUPS
         time = int(row[1]) % NUM_LOOKUPS or NUM_LOOKUPS
 
         hex_value_virt = int(row[2], 16) # 2 for VA
@@ -33,12 +38,14 @@ with open(filename, "r") as file:
         if filepath not in interest:
             continue
         
+        filepath_to_time_to_pfns = lst_filepath_to_time_to_pfns[run]
         if filepath not in filepath_to_time_to_pfns:
             filepath_to_time_to_pfns[filepath] = {}
         if time not in filepath_to_time_to_pfns[filepath]:
             filepath_to_time_to_pfns[filepath][time] = set()
         filepath_to_time_to_pfns[filepath][time].add(hex_value)
 
+        filepath_to_time_to_vas = lst_filepath_to_time_to_vas[run]
         if filepath not in filepath_to_time_to_vas:
             filepath_to_time_to_vas[filepath] = {}
         if time not in filepath_to_time_to_vas[filepath]:
@@ -52,24 +59,8 @@ def remove_repeated_pages(filepath_to_time_to_values):
         for time, values in time_to_values.items():
             time_to_values[time] = values - repeated_values
 
-remove_repeated_pages(filepath_to_time_to_pfns)
-remove_repeated_pages(filepath_to_time_to_vas)
-
-# Check if there are no distinct page accesses
-no_distinct_pfns = True
-no_distinct_vas = True
-for filepath in interest:
-    for time in range(1, NUM_LOOKUPS + 1):
-        print(f"lookup {time}: {len(filepath_to_time_to_pfns[filepath][time])} PFNs, {len(filepath_to_time_to_vas[filepath][time])} VAs, {len(filepath_to_time_to_pfns[filepath][time]) == len(filepath_to_time_to_vas[filepath][time])}")
-        no_distinct_pfns = no_distinct_pfns and len(filepath_to_time_to_pfns[filepath][time]) == 0
-        no_distinct_vas = no_distinct_vas and len(filepath_to_time_to_vas[filepath][time]) == 0
-    
-if no_distinct_pfns and no_distinct_vas:
-    print("No distinct page accesses :(")
-    sys.exit(1)
-
 # Create scatter plot
-def scatterplot(ylabel, filepath_to_time_to_values):
+def scatterplot(ylabel, filepath_to_time_to_values, run):
     fig = plt.figure(figsize=(15,9))
     axes = fig.add_subplot(111)
 
@@ -103,8 +94,27 @@ def scatterplot(ylabel, filepath_to_time_to_values):
 
     axes.grid(True)
     fig.tight_layout()
-    plt.savefig(f"{filename}_{ylabel}.png")
-    plt.show()
+    plt.savefig(f"{filename}_{ylabel}_{run}.png")
+    # plt.show()
 
-scatterplot("PFN", filepath_to_time_to_pfns)
-scatterplot("VA", filepath_to_time_to_vas)
+for run in range(NUM_RUNS):
+    filepath_to_time_to_pfns = lst_filepath_to_time_to_pfns[run]
+    filepath_to_time_to_vas = lst_filepath_to_time_to_vas[run]
+    remove_repeated_pages(filepath_to_time_to_pfns)
+    remove_repeated_pages(filepath_to_time_to_vas)
+
+    # Check if there are no distinct page accesses
+    no_distinct_pfns = True
+    no_distinct_vas = True
+    for filepath in interest:
+        for time in range(1, NUM_LOOKUPS + 1):
+            print(f"lookup {time}: {len(filepath_to_time_to_pfns[filepath][time])} PFNs, {len(filepath_to_time_to_vas[filepath][time])} VAs, {len(filepath_to_time_to_pfns[filepath][time]) == len(filepath_to_time_to_vas[filepath][time])}")
+            no_distinct_pfns = no_distinct_pfns and len(filepath_to_time_to_pfns[filepath][time]) == 0
+            no_distinct_vas = no_distinct_vas and len(filepath_to_time_to_vas[filepath][time]) == 0
+        
+    if no_distinct_pfns and no_distinct_vas:
+        print("No distinct page accesses :(")
+        continue
+    
+    scatterplot("PFN", filepath_to_time_to_pfns, run)
+    scatterplot("VA", filepath_to_time_to_vas, run)
