@@ -59,6 +59,8 @@
 #define PAGE_OFFSET		0xffff880000000000LLU
 #endif
 
+#define CHAR_BIT 8
+
 // globals
 int g_debug = 0;		// 1 == some, 2 == verbose
 int g_activepages = 0;
@@ -208,27 +210,27 @@ int walkmaps(pid_t pid)
 int setidlemap()
 {
 	FILE *idlefile;
-	int entries_written;
-	long filesize, offset = 0;
-	unsigned long long bitmap = 0xffffffffffffffff;
+	int err;
+	long num_phys_pages, max_off, offset = 0, entries_written = 0;
+	uint64_t bitmap = 0xffffffffffffffff;
 
-    if ((idlefile = fopen(g_idlepath, "wb")) == NULL) { // O_SYNC for immediate write
+    if ((idlefile = fopen(g_idlepath, "wb")) == NULL) {
         perror("Can't open idlemap");
         exit(1);
     }
 
-	fseek(idlefile, 0, SEEK_END);
-	filesize = ftell(idlefile);
-
-    while (offset < filesize) {
+	num_phys_pages = sysconf(_SC_PHYS_PAGES);
+	max_off = num_phys_pages / CHAR_BIT; // 1 bit per page, 8 bits per byte
+	printf("num_phys_pages = %ld\n", num_phys_pages);
+    while (offset <= max_off) {
 		if (fseek(idlefile, offset, SEEK_SET)) {
 			perror("Can't seek idlemap");
 			goto out;
 		}
-        if (fwrite(&bitmap, 1, sizeof(bitmap), idlefile) != sizeof(bitmap)) {
-            perror("Error writing entry: skipped");
+        if (err = (fwrite(&bitmap, 1, sizeof(bitmap), idlefile)) != sizeof(bitmap)) {
+            printf("Error %d writing entry: skipped", err);
         } else {
-			entries_written++;
+			entries_written += (sizeof(bitmap) * CHAR_BIT);
 		}
 		offset += sizeof(bitmap);
     }
@@ -263,7 +265,6 @@ int loadidlemap()
 	// unfortunately, larger reads do not seem supported
 	while (g_idlebufsize < MAX_IDLEMAP_SIZE) {
 		if (len = fread(p, 1, IDLEMAP_CHUNK_SIZE, idlefile) != IDLEMAP_CHUNK_SIZE) {
-			printf("Loaded %d bytes = %llx - breaking\n", len, *p);
 			break;
 		}
 		p++;
@@ -286,7 +287,7 @@ void signal_handler(int signal_num)
 			ssize_t entries_written;
 			g_in_lookup = 1;
             g_num_lookups++;
-			entries_written = setidlemap(g_pid); // set idle flags to 1
+			entries_written = setidlemap(); // set idle flags to 1
 			printf("entries_written = %d\n", entries_written);
         } else {
 			g_walkedpages = 0;
