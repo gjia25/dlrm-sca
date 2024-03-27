@@ -4,56 +4,15 @@ import csv
 import sys
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
-import concurrent.futures
+import multiprocessing
 
-NUM_LOOKUPS = 26
-NUM_RUNS = 3
 VA_UPPER_BOT = 0x7f0000000000
 VA_LOWER_TOP = 0x100000000000
 
 filename = sys.argv[1]
-lst_filepath_to_time_to_pfns = [{} for _ in range(NUM_RUNS)]
-lst_filepath_to_time_to_vas = [{} for _ in range(NUM_RUNS)]
-
-prefixes = ["/usr/lib/", "/usr/bin/", "/home/gjia/yolo/venv/lib/python3.10/site-packages/"]
+NUM_LOOKUPS = eval(sys.argv[2]) # 26 for kaggle
+NUM_RUNS = eval(sys.argv[3]) # 3 for kaggle
 interest = ["[heap]", "[stack]"]
-
-
-# Open the file and read its lines
-with open(filename, "r") as file:
-    reader = csv.reader(file)
-    # next(reader)  # Skip header
-    for row in reader:
-        if len(row) != 5:
-            continue
-        if NUM_RUNS <= 1:
-            run = 0
-        else:
-            run = (int(row[1]) - 1) // NUM_LOOKUPS
-        time = int(row[1]) % NUM_LOOKUPS or NUM_LOOKUPS
-
-        hex_value_virt = int(row[2], 16) # 2 for VA
-        hex_value = int(row[3], 16) # 3 for PFN
-        filepath = row[4]
-        
-        if filepath not in interest:
-            continue
-        
-        filepath_to_time_to_pfns = lst_filepath_to_time_to_pfns[run]
-        if filepath not in filepath_to_time_to_pfns:
-            filepath_to_time_to_pfns[filepath] = {}
-        if time not in filepath_to_time_to_pfns[filepath]:
-            filepath_to_time_to_pfns[filepath][time] = set()
-        filepath_to_time_to_pfns[filepath][time].add(hex_value)
-
-        filepath_to_time_to_vas = lst_filepath_to_time_to_vas[run]
-        if filepath not in filepath_to_time_to_vas:
-            filepath_to_time_to_vas[filepath] = {}
-        if time not in filepath_to_time_to_vas[filepath]:
-            filepath_to_time_to_vas[filepath][time] = set()
-        filepath_to_time_to_vas[filepath][time].add(hex_value_virt)
-
-print("Parsed output file")
 
 # Remove pages accessed across all lookups
 def remove_repeated_pages(filepath_to_time_to_values):
@@ -100,8 +59,8 @@ def scatterplot(ylabel, filepath_to_time_to_values, run):
     plt.savefig(f"{filename}_{ylabel}_{run}.png")
     # plt.show()
 
-def task(run, dict_pair):
-    filepath_to_time_to_pfns, filepath_to_time_to_vas = dict_pair
+def task(args):
+    run, filepath_to_time_to_pfns, filepath_to_time_to_vas = args
     remove_repeated_pages(filepath_to_time_to_pfns)
     remove_repeated_pages(filepath_to_time_to_vas)
 
@@ -109,10 +68,14 @@ def task(run, dict_pair):
     no_distinct_pfns = True
     no_distinct_vas = True
     for filepath in interest:
+        if filepath not in filepath_to_time_to_pfns or filepath not in filepath_to_time_to_vas:
+            continue
         for time in range(1, NUM_LOOKUPS + 1):
-            print(f"run {run} lookup {time}: {len(filepath_to_time_to_pfns[filepath][time])} PFNs, {len(filepath_to_time_to_vas[filepath][time])} VAs, {len(filepath_to_time_to_pfns[filepath][time]) == len(filepath_to_time_to_vas[filepath][time])}")
-            no_distinct_pfns = no_distinct_pfns and len(filepath_to_time_to_pfns[filepath][time]) == 0
-            no_distinct_vas = no_distinct_vas and len(filepath_to_time_to_vas[filepath][time]) == 0
+            pfn_timevals = filepath_to_time_to_pfns[filepath].get(time, []) # filepath_to_time_to_pfns[filepath][time]
+            va_timevals = filepath_to_time_to_vas[filepath].get(time, []) 
+            print(f"run {run} lookup {time}: {len(pfn_timevals)} PFNs, {len(va_timevals)} VAs, {len(pfn_timevals) == len(va_timevals)}")
+            no_distinct_pfns = no_distinct_pfns and len(pfn_timevals) == 0
+            no_distinct_vas = no_distinct_vas and len(va_timevals) == 0
         
     if no_distinct_pfns and no_distinct_vas:
         return run, False
@@ -121,10 +84,45 @@ def task(run, dict_pair):
     scatterplot("VA", filepath_to_time_to_vas, run)
     return run, True
 
-dict_pairs = zip(lst_filepath_to_time_to_pfns, lst_filepath_to_time_to_vas)
-with concurrent.futures.ThreadPoolExecutor(max_workers=NUM_RUNS) as executor:
-    futures = [executor.submit(task, run, dict_pair) for run, dict_pair in enumerate(dict_pairs)]
+if __name__ == '__main__':
+    lst_filepath_to_time_to_pfns = [{} for _ in range(NUM_RUNS)]
+    lst_filepath_to_time_to_vas = [{} for _ in range(NUM_RUNS)]
 
-    for future in concurrent.futures.as_completed(futures):
-        run, result = future.result()
-        print(f"Run {run}: {'done' if result else 'no distinct accesses :('}")
+    prefixes = ["/usr/lib/", "/usr/bin/", "/home/gjia/yolo/venv/lib/python3.10/site-packages/"]
+
+    # Open the file and read its lines
+    with open(filename, "r") as file:
+        reader = csv.reader(file)
+        # next(reader)  # Skip header
+        for row in reader:
+            if len(row) != 5:
+                continue
+            run = (int(row[1]) - 1) // NUM_LOOKUPS
+            time = int(row[1]) % NUM_LOOKUPS or NUM_LOOKUPS
+
+            hex_value_virt = int(row[2], 16) # 2 for VA
+            hex_value = int(row[3], 16) # 3 for PFN
+            filepath = row[4]
+            
+            if filepath not in interest:
+                continue
+            
+            filepath_to_time_to_pfns = lst_filepath_to_time_to_pfns[run]
+            if filepath not in filepath_to_time_to_pfns:
+                filepath_to_time_to_pfns[filepath] = {}
+            if time not in filepath_to_time_to_pfns[filepath]:
+                filepath_to_time_to_pfns[filepath][time] = set()
+            filepath_to_time_to_pfns[filepath][time].add(hex_value)
+
+            filepath_to_time_to_vas = lst_filepath_to_time_to_vas[run]
+            if filepath not in filepath_to_time_to_vas:
+                filepath_to_time_to_vas[filepath] = {}
+            if time not in filepath_to_time_to_vas[filepath]:
+                filepath_to_time_to_vas[filepath][time] = set()
+            filepath_to_time_to_vas[filepath][time].add(hex_value_virt)
+
+    print("Parsed output file")
+
+    inputs = zip(range(NUM_RUNS), lst_filepath_to_time_to_pfns, lst_filepath_to_time_to_vas)
+    with multiprocessing.Pool(processes=NUM_RUNS) as pool: 
+        print(pool.map(task, inputs))
