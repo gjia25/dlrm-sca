@@ -4,9 +4,10 @@ import csv
 import sys
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
+import concurrent.futures
 
-NUM_LOOKUPS = 3
-NUM_RUNS = 1
+NUM_LOOKUPS = 26
+NUM_RUNS = 3
 VA_UPPER_BOT = 0x7f0000000000
 VA_LOWER_TOP = 0x100000000000
 
@@ -28,7 +29,7 @@ with open(filename, "r") as file:
         if NUM_RUNS <= 1:
             run = 0
         else:
-            run = int(row[1]) // NUM_LOOKUPS
+            run = (int(row[1]) - 1) // NUM_LOOKUPS
         time = int(row[1]) % NUM_LOOKUPS or NUM_LOOKUPS
 
         hex_value_virt = int(row[2], 16) # 2 for VA
@@ -51,7 +52,9 @@ with open(filename, "r") as file:
         if time not in filepath_to_time_to_vas[filepath]:
             filepath_to_time_to_vas[filepath][time] = set()
         filepath_to_time_to_vas[filepath][time].add(hex_value_virt)
-        
+
+print("Parsed output file")
+
 # Remove pages accessed across all lookups
 def remove_repeated_pages(filepath_to_time_to_values):
     for filepath, time_to_values in filepath_to_time_to_values.items():
@@ -97,9 +100,8 @@ def scatterplot(ylabel, filepath_to_time_to_values, run):
     plt.savefig(f"{filename}_{ylabel}_{run}.png")
     # plt.show()
 
-for run in range(NUM_RUNS):
-    filepath_to_time_to_pfns = lst_filepath_to_time_to_pfns[run]
-    filepath_to_time_to_vas = lst_filepath_to_time_to_vas[run]
+def task(run, dict_pair):
+    filepath_to_time_to_pfns, filepath_to_time_to_vas = dict_pair
     remove_repeated_pages(filepath_to_time_to_pfns)
     remove_repeated_pages(filepath_to_time_to_vas)
 
@@ -108,13 +110,21 @@ for run in range(NUM_RUNS):
     no_distinct_vas = True
     for filepath in interest:
         for time in range(1, NUM_LOOKUPS + 1):
-            print(f"lookup {time}: {len(filepath_to_time_to_pfns[filepath][time])} PFNs, {len(filepath_to_time_to_vas[filepath][time])} VAs, {len(filepath_to_time_to_pfns[filepath][time]) == len(filepath_to_time_to_vas[filepath][time])}")
+            print(f"run {run} lookup {time}: {len(filepath_to_time_to_pfns[filepath][time])} PFNs, {len(filepath_to_time_to_vas[filepath][time])} VAs, {len(filepath_to_time_to_pfns[filepath][time]) == len(filepath_to_time_to_vas[filepath][time])}")
             no_distinct_pfns = no_distinct_pfns and len(filepath_to_time_to_pfns[filepath][time]) == 0
             no_distinct_vas = no_distinct_vas and len(filepath_to_time_to_vas[filepath][time]) == 0
         
     if no_distinct_pfns and no_distinct_vas:
-        print("No distinct page accesses :(")
-        continue
+        return run, False
     
     scatterplot("PFN", filepath_to_time_to_pfns, run)
     scatterplot("VA", filepath_to_time_to_vas, run)
+    return run, True
+
+dict_pairs = zip(lst_filepath_to_time_to_pfns, lst_filepath_to_time_to_vas)
+with concurrent.futures.ThreadPoolExecutor(max_workers=NUM_RUNS) as executor:
+    futures = [executor.submit(task, run, dict_pair) for run, dict_pair in enumerate(dict_pairs)]
+
+    for future in concurrent.futures.as_completed(futures):
+        run, result = future.result()
+        print(f"Run {run}: {'done' if result else 'no distinct accesses :('}")
