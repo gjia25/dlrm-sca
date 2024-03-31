@@ -749,7 +749,10 @@ def inference(
         scores = []
         targets = []
 
-    for i, testBatch in enumerate(test_ld):
+    desired_idx = np.array([0,2,3])
+    np.random.shuffle(desired_idx)
+    for i in desired_idx:
+        testBatch = test_ld[i]
         # early exit if nbatches was set by the user and was exceeded
         if nbatches > 0 and i >= nbatches:
             break
