@@ -748,59 +748,55 @@ def inference(
     if args.mlperf_logging:
         scores = []
         targets = []
-
-    desired_idx = np.array([0,2,3])
-    np.random.shuffle(desired_idx)
-    for i in desired_idx:
-        testBatch = test_ld[i]
+    
+    for i, testBatch in enumerate(test_ld):
         # early exit if nbatches was set by the user and was exceeded
-        if nbatches > 0 and i >= nbatches:
-            break
-        if i == 1: # hardcode skip
-            continue
-        X_test, lS_o_test, lS_i_test, T_test, W_test, CBPP_test = unpack_batch(
-            testBatch
-        )
-        print(f"Testing batch {i}: X_test = {X_test}", flush=True)
+        desired_idx = np.array([0,2,3])
+        np.random.shuffle(desired_idx)
+        for idx in desired_idx:
+            X_test, lS_o_test, lS_i_test, T_test, W_test, CBPP_test = unpack_batch(
+                testBatch[idx]
+            )
+            print(f"Testing batch {i} sample {idx}: X_test = {X_test}", flush=True)
 
-        # Skip the batch if batch size not multiple of total ranks
-        if ext_dist.my_size > 1 and X_test.size(0) % ext_dist.my_size != 0:
-            print("Warning: Skiping the batch %d with size %d" % (i, X_test.size(0)))
-            continue
+            # Skip the batch if batch size not multiple of total ranks
+            if ext_dist.my_size > 1 and X_test.size(0) % ext_dist.my_size != 0:
+                print("Warning: Skiping the batch %d with size %d" % (i, X_test.size(0)))
+                continue
 
-        # forward pass
-        Z_test = dlrm_wrap(
-            X_test,
-            lS_o_test,
-            lS_i_test,
-            use_gpu,
-            device,
-            ndevices=ndevices,
-        )
-        ### gather the distributed results on each rank ###
-        # For some reason it requires explicit sync before all_gather call if
-        # tensor is on GPU memory
-        if Z_test.is_cuda:
-            torch.cuda.synchronize()
-        (_, batch_split_lengths) = ext_dist.get_split_lengths(X_test.size(0))
-        if ext_dist.my_size > 1:
-            Z_test = ext_dist.all_gather(Z_test, batch_split_lengths)
+            # forward pass
+            Z_test = dlrm_wrap(
+                X_test,
+                lS_o_test,
+                lS_i_test,
+                use_gpu,
+                device,
+                ndevices=ndevices,
+            )
+            ### gather the distributed results on each rank ###
+            # For some reason it requires explicit sync before all_gather call if
+            # tensor is on GPU memory
+            if Z_test.is_cuda:
+                torch.cuda.synchronize()
+            (_, batch_split_lengths) = ext_dist.get_split_lengths(X_test.size(0))
+            if ext_dist.my_size > 1:
+                Z_test = ext_dist.all_gather(Z_test, batch_split_lengths)
 
-        if args.mlperf_logging:
-            S_test = Z_test.detach().cpu().numpy()  # numpy array
-            T_test = T_test.detach().cpu().numpy()  # numpy array
-            scores.append(S_test)
-            targets.append(T_test)
-        else:
-            with record_function("DLRM accuracy compute"):
-                # compute loss and accuracy
+            if args.mlperf_logging:
                 S_test = Z_test.detach().cpu().numpy()  # numpy array
                 T_test = T_test.detach().cpu().numpy()  # numpy array
+                scores.append(S_test)
+                targets.append(T_test)
+            else:
+                with record_function("DLRM accuracy compute"):
+                    # compute loss and accuracy
+                    S_test = Z_test.detach().cpu().numpy()  # numpy array
+                    T_test = T_test.detach().cpu().numpy()  # numpy array
 
-                mbs_test = T_test.shape[0]  # = mini_batch_size except last
-                A_test = np.sum((np.round(S_test, 0) == T_test).astype(np.uint8))
-                test_accu += A_test
-                test_samp += mbs_test
+                    mbs_test = T_test.shape[0]  # = mini_batch_size except last
+                    A_test = np.sum((np.round(S_test, 0) == T_test).astype(np.uint8))
+                    test_accu += A_test
+                    test_samp += mbs_test
 
     if args.mlperf_logging:
         with record_function("DLRM mlperf sklearn metrics compute"):
@@ -943,7 +939,7 @@ def run():
     parser.add_argument("--num-workers", type=int, default=0)
     parser.add_argument("--memory-map", action="store_true", default=False)
     # training
-    parser.add_argument("--mini-batch-size", type=int, default=1)
+    parser.add_argument("--mini-batch-size", type=int, default=3)
     parser.add_argument("--nepochs", type=int, default=1)
     parser.add_argument("--learning-rate", type=float, default=0.1)
     parser.add_argument("--print-precision", type=int, default=5)
@@ -974,7 +970,7 @@ def run():
     # debugging and profiling
     parser.add_argument("--print-freq", type=int, default=1024)
     parser.add_argument("--test-freq", type=int, default=1024)
-    parser.add_argument("--test-mini-batch-size", type=int, default=1)
+    parser.add_argument("--test-mini-batch-size", type=int, default=3)
     parser.add_argument("--test-num-workers", type=int, default=1)
     parser.add_argument("--print-time", action="store_true", default=True)
     parser.add_argument("--print-wall-time", action="store_true", default=False)
