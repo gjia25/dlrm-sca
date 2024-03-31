@@ -750,15 +750,14 @@ def inference(
         targets = []
     
     for i, testBatch in enumerate(test_ld):
-        # early exit if nbatches was set by the user and was exceeded
+        X_test, lS_o_test, lS_i_test, T_test, W_test, CBPP_test = unpack_batch(
+            testBatch
+        )
+        print(f"Testing batch {i}, {X_test.size()} samples: X_test = {X_test}", flush=True)
         desired_idx = np.array([0,2,3])
         np.random.shuffle(desired_idx)
         for idx in desired_idx:
-            X_test, lS_o_test, lS_i_test, T_test, W_test, CBPP_test = unpack_batch(
-                testBatch[idx]
-            )
-            print(f"Testing batch {i} sample {idx}: X_test = {X_test}", flush=True)
-
+            print(f"Sample {idx}: {X_test[idx]}")
             # Skip the batch if batch size not multiple of total ranks
             if ext_dist.my_size > 1 and X_test.size(0) % ext_dist.my_size != 0:
                 print("Warning: Skiping the batch %d with size %d" % (i, X_test.size(0)))
@@ -766,9 +765,9 @@ def inference(
 
             # forward pass
             Z_test = dlrm_wrap(
-                X_test,
-                lS_o_test,
-                lS_i_test,
+                X_test[idx],
+                lS_o_test[idx],
+                lS_i_test[idx],
                 use_gpu,
                 device,
                 ndevices=ndevices,
