@@ -66,6 +66,7 @@ int g_debug = 0;		// 1 == some, 2 == verbose
 int g_activepages = 0;
 int g_walkedpages = 0;
 char *g_idlepath = "/sys/kernel/mm/page_idle/bitmap";
+char *g_outdir = "/dev/shm";
 unsigned long long *g_idlebuf;
 unsigned long long g_idlebufsize;
 static struct timeval g_ts0;
@@ -359,7 +360,7 @@ int main(int argc, char *argv[])
 		
 		// Open output file for appending
 		char filename[PATHSIZE];
-		sprintf(filename, "o-%s-%llu", argv[2], g_ts0.tv_sec * (uint64_t)1000000 + g_ts0.tv_usec);
+		sprintf(filename, "%s/o-%s-%llu", g_outdir, argv[2], g_ts0.tv_sec * (uint64_t)1000000 + g_ts0.tv_usec);
 		g_output_file = fopen(filename, "a");
 		if (g_output_file == NULL) {
 			perror("Unable to open output file");

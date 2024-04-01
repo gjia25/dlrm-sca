@@ -76,7 +76,7 @@ with warnings.catch_warnings():
 # import torch.nn.functional as Functional
 # from torch.nn.parameter import Parameter
 
-custom_test_nbatches = 4
+custom_test_nbatches = 1
 
 exc = getattr(builtins, "IOError", "FileNotFoundError")
 
@@ -755,43 +755,19 @@ def inference(
         )
         print(f"Testing batch {i}, {X_test.size()} samples: X_test = {X_test}", flush=True)
         desired_idx = np.array([0,2,3])
-        np.random.shuffle(desired_idx)
+        # np.random.shuffle(desired_idx)
         for idx in desired_idx:
             print(f"Sample {idx}: {X_test[idx]}")
-
             # forward pass
             Z_test = dlrm_wrap(
                 X_test[idx].reshape(1, 13),
-                lS_o_test[idx].reshape(1, 13),
-                lS_i_test[idx].reshape(1, 13),
+                lS_o_test[:, 0].reshape(26, 1), # offsets always 0
+                lS_i_test[:, idx].reshape(26, 1),
                 use_gpu,
                 device,
                 ndevices=ndevices,
             )
-            ### gather the distributed results on each rank ###
-            # For some reason it requires explicit sync before all_gather call if
-            # tensor is on GPU memory
-            if Z_test.is_cuda:
-                torch.cuda.synchronize()
-            (_, batch_split_lengths) = ext_dist.get_split_lengths(X_test.size(0))
-            if ext_dist.my_size > 1:
-                Z_test = ext_dist.all_gather(Z_test, batch_split_lengths)
-
-            if args.mlperf_logging:
-                S_test = Z_test.detach().cpu().numpy()  # numpy array
-                T_test = T_test.detach().cpu().numpy()  # numpy array
-                scores.append(S_test)
-                targets.append(T_test)
-            else:
-                with record_function("DLRM accuracy compute"):
-                    # compute loss and accuracy
-                    S_test = Z_test.detach().cpu().numpy()  # numpy array
-                    T_test = T_test.detach().cpu().numpy()  # numpy array
-
-                    mbs_test = T_test.shape[0]  # = mini_batch_size except last
-                    A_test = np.sum((np.round(S_test, 0) == T_test).astype(np.uint8))
-                    test_accu += A_test
-                    test_samp += mbs_test
+            # skip accuracy testing
 
     if args.mlperf_logging:
         with record_function("DLRM mlperf sklearn metrics compute"):
