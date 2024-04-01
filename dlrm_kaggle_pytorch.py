@@ -769,6 +769,7 @@ def inference(
                 ndevices=ndevices,
             )
             # skip accuracy testing
+        break # skip rest of batches
 
     if args.mlperf_logging:
         with record_function("DLRM mlperf sklearn metrics compute"):
