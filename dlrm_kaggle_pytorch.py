@@ -77,6 +77,7 @@ with warnings.catch_warnings():
 # from torch.nn.parameter import Parameter
 
 custom_test_nbatches = 1
+custom_test_batchsize = 4
 
 exc = getattr(builtins, "IOError", "FileNotFoundError")
 
@@ -848,6 +849,7 @@ def inference(
 
 def run():
     global custom_test_nbatches
+    global custom_test_batchsize
     ### parse arguments ###
     parser = argparse.ArgumentParser(
         description="Train Deep Learning Recommendation Model (DLRM)"
@@ -910,7 +912,7 @@ def run():
     parser.add_argument("--num-workers", type=int, default=0)
     parser.add_argument("--memory-map", action="store_true", default=False)
     # training
-    parser.add_argument("--mini-batch-size", type=int, default=4)
+    parser.add_argument("--mini-batch-size", type=int, default=custom_test_batchsize)
     parser.add_argument("--nepochs", type=int, default=1)
     parser.add_argument("--learning-rate", type=float, default=0.1)
     parser.add_argument("--print-precision", type=int, default=5)
@@ -941,7 +943,7 @@ def run():
     # debugging and profiling
     parser.add_argument("--print-freq", type=int, default=1024)
     parser.add_argument("--test-freq", type=int, default=1024)
-    parser.add_argument("--test-mini-batch-size", type=int, default=3)
+    parser.add_argument("--test-mini-batch-size", type=int, default=custom_test_batchsize)
     parser.add_argument("--test-num-workers", type=int, default=1)
     parser.add_argument("--print-time", action="store_true", default=True)
     parser.add_argument("--print-wall-time", action="store_true", default=False)
