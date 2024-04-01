@@ -758,16 +758,12 @@ def inference(
         np.random.shuffle(desired_idx)
         for idx in desired_idx:
             print(f"Sample {idx}: {X_test[idx]}")
-            # Skip the batch if batch size not multiple of total ranks
-            if ext_dist.my_size > 1 and X_test.size(0) % ext_dist.my_size != 0:
-                print("Warning: Skiping the batch %d with size %d" % (i, X_test.size(0)))
-                continue
 
             # forward pass
             Z_test = dlrm_wrap(
-                X_test[idx],
-                lS_o_test[idx],
-                lS_i_test[idx],
+                X_test[idx].reshape(1, 13),
+                lS_o_test[idx].reshape(1, 13),
+                lS_i_test[idx].reshape(1, 13),
                 use_gpu,
                 device,
                 ndevices=ndevices,
