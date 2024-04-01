@@ -222,7 +222,7 @@ int setidlemap()
 
 	num_phys_pages = sysconf(_SC_PHYS_PAGES);
 	max_off = num_phys_pages / CHAR_BIT; // 1 bit per page, 8 bits per byte
-	printf("num_phys_pages = %ld\n", num_phys_pages);
+	// printf("num_phys_pages = %ld\n", num_phys_pages);
     while (offset <= max_off) {
 		if (fseek(idlefile, offset, SEEK_SET)) {
 			perror("Can't seek idlemap");
@@ -289,13 +289,13 @@ void signal_handler(int signal_num)
 			g_in_lookup = 1;
             g_num_lookups++;
 			entries_written = setidlemap(); // set idle flags to 1
-			printf("entries_written = %d\n", entries_written);
+			// printf("entries_written = %d\n", entries_written);
         } else {
 			g_walkedpages = 0;
 			loadidlemap(); // cache page idle map
 			walkmaps(g_pid); // read page flags
 			g_in_lookup = 0;
-			printf("g_walkedpages = %d\n", g_walkedpages);
+			// printf("g_walkedpages = %d\n", g_walkedpages);
         }
 		kill(g_pid, SIGUSR1);
     }
