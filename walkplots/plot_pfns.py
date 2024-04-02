@@ -12,7 +12,7 @@ VA_LOWER_TOP = 0x100000000000
 filename = sys.argv[1]
 NUM_LOOKUPS = eval(sys.argv[2]) # 26 for kaggle
 NUM_RUNS = eval(sys.argv[3]) # 3 for kaggle
-interest = ["[heap]", "[stack]"]
+interest = ["[heap]"]
 
 def get_processed_filename(filename, pfn_or_va, run):
     return f"{filename}_{pfn_or_va}_{run}"
@@ -30,9 +30,13 @@ def scatterplot(ylabel, filepath_to_time_to_values, run):
     for filepath, time_to_values in sorted(filepath_to_time_to_values.items()):
         x = []
         y = []
-        for time, hex_list in time_to_values.items():
-            if len(hex_list) == 0:
+        for time, hex_tup_list in time_to_values.items():
+            if len(hex_tup_list) == 0:
                 continue
+            if ylabel == "PFN":
+                _, hex_list = zip(*hex_tup_list)
+            else: # VA
+                hex_list, _ = zip(*hex_tup_list)
             x.extend([time] * len(hex_list))
             y.extend(hex_list)
             max_y = max(max_y, max(hex_list))
@@ -41,7 +45,7 @@ def scatterplot(ylabel, filepath_to_time_to_values, run):
         axes.scatter(x, y, s=2, marker='s', label=filepath)
 
     print(f"min_y: {min_y}, max_y: {max_y}")
-    axes.set_ylim([floor(min_y/10)*10, ceil(max_y/10)*10])
+    axes.set_ylim([floor(min_y/128)*128, ceil(max_y/128)*128])
     # axes.get_yaxis().set_major_locator(ticker.MultipleLocator(16 ** 4))
     axes.get_yaxis().set_major_formatter(ticker.FuncFormatter(lambda x, p: '0x%08x' % int(x)))
     axes.set_ylabel(ylabel)
@@ -92,13 +96,14 @@ def check_no_distinct_pages(filepath_to_run_to_pfns):
             no_distinct_pfns = no_distinct_pfns and len(pfn_timevals) == 0
     return no_distinct_pfns
 
-def save_distinct_pages(filepath_to_time_to_values, pfn_or_va):
-    with open(f"{get_processed_filename(filename, pfn_or_va, "distinct")}", "w") as file:
+def save_distinct_pages(filepath_to_time_to_pages):
+    with open(f"{get_processed_filename(filename, 'VP', 'distinct')}", "w") as file: # assuming (va, pfn) tuples
         writer = csv.writer(file)
-        for filepath, time_to_values in filepath_to_time_to_values.items():
-            for time, values in time_to_values.items():
-                for value in values:
-                    writer.writerow([filepath, time, value])
+        for filepath, time_to_pages in filepath_to_time_to_pages.items():
+            for time, pages in time_to_pages.items():
+                for page in pages:
+                    va, pfn = page
+                    writer.writerow([filepath, time, va, pfn])
 
 def task(args):
     run, filepath_to_time_to_pfns, filepath_to_time_to_vas = args
@@ -126,8 +131,7 @@ def get_filepath_to_run_to_values(lst_filepath_to_time_to_values):
     return filepath_to_run_to_values
 
 if __name__ == '__main__':
-    lst_filepath_to_time_to_pfns = [{} for _ in range(NUM_RUNS)]
-    lst_filepath_to_time_to_vas = [{} for _ in range(NUM_RUNS)]
+    lst_filepath_to_time_to_pages = [{} for _ in range(NUM_RUNS)]
 
     # Open the file and read its lines
     with open(filename, "r") as file:
@@ -146,36 +150,25 @@ if __name__ == '__main__':
             
             if filepath not in interest:
                 continue
-            
-            # filepath_to_time_to_pfns = lst_filepath_to_time_to_pfns[run]
-            # if filepath not in filepath_to_time_to_pfns:
-            #     filepath_to_time_to_pfns[filepath] = {}
-            # if time not in filepath_to_time_to_pfns[filepath]:
-            #     filepath_to_time_to_pfns[filepath][time] = set()
-            # filepath_to_time_to_pfns[filepath][time].add(hex_value)
 
-            filepath_to_time_to_vas = lst_filepath_to_time_to_vas[run]
-            if filepath not in filepath_to_time_to_vas:
-                filepath_to_time_to_vas[filepath] = {}
-            if time not in filepath_to_time_to_vas[filepath]:
-                filepath_to_time_to_vas[filepath][time] = set()
-            filepath_to_time_to_vas[filepath][time].add(hex_value_virt)
+            filepath_to_time_to_pages = lst_filepath_to_time_to_pages[run]
+            if filepath not in filepath_to_time_to_pages:
+                filepath_to_time_to_pages[filepath] = {}
+            if time not in filepath_to_time_to_pages[filepath]:
+                filepath_to_time_to_pages[filepath][time] = set()
+            filepath_to_time_to_pages[filepath][time].add((hex_value_virt, hex_value))
 
-    print(f"Parsed output file: expected {NUM_RUNS} runs, got {len(lst_filepath_to_time_to_pfns)}")
+    print(f"Parsed output file")
 
-    # filepath_to_run_to_pfns = get_filepath_to_run_to_values(lst_filepath_to_time_to_pfns)
-    # del lst_filepath_to_time_to_pfns
-    filepath_to_run_to_vas = get_filepath_to_run_to_values(lst_filepath_to_time_to_vas)
-    del lst_filepath_to_time_to_vas
+    filepath_to_run_to_pages = get_filepath_to_run_to_values(lst_filepath_to_time_to_pages)
+    del lst_filepath_to_time_to_pages
     print("De-duplicating pages across lookups")
-    # remove_repeated_pages(filepath_to_run_to_pfns)
-    remove_repeated_pages(filepath_to_run_to_vas)
-    if check_no_distinct_pages(filepath_to_run_to_vas):
-        print("No distinct pages accessed across inference requests :(")
+    remove_repeated_pages(filepath_to_run_to_pages)
+    if check_no_distinct_pages(filepath_to_run_to_pages):
+        print("No distinct pages (virtual or physical) accessed across inference requests :(")
         sys.exit(0)
-
-    # scatterplot("PFN", filepath_to_run_to_pfns, "overall")
-    scatterplot("VA", filepath_to_run_to_vas, "overall")
+    save_distinct_pages(filepath_to_run_to_pages)
+    scatterplot("PFN", filepath_to_run_to_pages, "overall")
 
     # inputs = zip(range(NUM_RUNS), lst_filepath_to_time_to_pfns, lst_filepath_to_time_to_vas)
     # with multiprocessing.Pool(processes=NUM_RUNS) as pool: 
