@@ -17,6 +17,7 @@ import sys
 import time
 import os
 import signal
+import subprocess
 import csv
 
 # onnx
@@ -432,6 +433,10 @@ class DLRM_Net(nn.Module):
                 signal.pause()
                 print(f"{k},{hex(id(sparse_index_group_batch))},{hex(id(sparse_offset_group_batch))},{hex(id(E))},{hex(id(V))}")
                 ly.append(V)
+                
+            # Drop clean caches
+            subprocess.run(["sync"])
+            subprocess.run(["echo", "3", ">", "/proc/sys/vm/drop_caches"])
 
         # print(ly)
         return ly
