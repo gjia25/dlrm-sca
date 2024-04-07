@@ -19,6 +19,7 @@ import os
 import signal
 import subprocess
 import csv
+import psutil
 
 # onnx
 # The onnx import causes deprecation warnings every time workers
@@ -381,9 +382,13 @@ class DLRM_Net(nn.Module):
         # 2. for each embedding the lookups are further organized into a batch
         # 3. for a list of embedding tables there is a list of batched lookups
 
-        ly = []
+        ly = [] 
         signal.signal(signal.SIGUSR1, signal_handler)
         for k, sparse_index_group_batch in enumerate(lS_i):
+            # Drop clean caches
+            subprocess.run(["sync"])
+            subprocess.run(["echo", "3", ">", "/proc/sys/vm/drop_caches"])
+
             sparse_offset_group_batch = lS_o[k]
             
             # embedding lookup
@@ -431,12 +436,9 @@ class DLRM_Net(nn.Module):
                 
                 os.kill(self.parent_pid, signal.SIGUSR1)
                 signal.pause()
-                print(f"{k},{hex(id(sparse_index_group_batch))},{hex(id(sparse_offset_group_batch))},{hex(id(E))},{hex(id(V))}")
+                swap = psutil.swap_memory()
+                print(f"{k},{hex(id(sparse_index_group_batch))},{hex(id(sparse_offset_group_batch))},{hex(id(E))},{hex(id(V))},{swap.used}")
                 ly.append(V)
-                
-            # Drop clean caches
-            subprocess.run(["sync"])
-            subprocess.run(["echo", "3", ">", "/proc/sys/vm/drop_caches"])
 
         # print(ly)
         return ly
