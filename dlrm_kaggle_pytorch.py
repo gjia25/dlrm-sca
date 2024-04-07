@@ -436,8 +436,8 @@ class DLRM_Net(nn.Module):
                 
                 os.kill(self.parent_pid, signal.SIGUSR1)
                 signal.pause()
-                swap = psutil.swap_memory()
-                print(f"{k},{hex(id(sparse_index_group_batch))},{hex(id(sparse_offset_group_batch))},{hex(id(E))},{hex(id(V))},{swap.used}")
+                print(psutil.swap_memory())
+                print(f"{k},{hex(id(sparse_index_group_batch))},{hex(id(sparse_offset_group_batch))},{hex(id(E))},{hex(id(V))}")
                 ly.append(V)
 
         # print(ly)
