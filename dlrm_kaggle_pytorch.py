@@ -765,7 +765,7 @@ def inference(
         desired_idx = np.array([0,2,3])
         # np.random.shuffle(desired_idx)
         for idx in desired_idx:
-            print(f"Sample {idx}: {X_test[idx]}")
+            print(f"Sample {idx} with sparse indices: {lS_i_test[idx]}")
             # forward pass
             Z_test = dlrm_wrap(
                 X_test[idx].reshape(1, 13),
