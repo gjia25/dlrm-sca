@@ -383,12 +383,7 @@ class DLRM_Net(nn.Module):
         # 3. for a list of embedding tables there is a list of batched lookups
 
         ly = [] 
-        signal.signal(signal.SIGUSR1, signal_handler)
         for k, sparse_index_group_batch in enumerate(lS_i):
-            # Drop clean caches
-            subprocess.run(["sync"])
-            subprocess.run(["echo", "3", ">", "/proc/sys/vm/drop_caches"])
-
             sparse_offset_group_batch = lS_o[k]
             
             # embedding lookup
@@ -424,19 +419,13 @@ class DLRM_Net(nn.Module):
 
                 ly.append(QV)
             else:
-                os.kill(self.parent_pid, signal.SIGUSR1)
-                signal.pause()
-
+                os.kill(os.getpid(), signal.SIGTRAP) # sigtrap for debugger
                 E = emb_l[k]
                 V = E(
                     sparse_index_group_batch,
                     sparse_offset_group_batch,
                     per_sample_weights=per_sample_weights,
                 )
-                
-                os.kill(self.parent_pid, signal.SIGUSR1)
-                signal.pause()
-                print(psutil.swap_memory())
                 print(f"{k},{hex(id(sparse_index_group_batch))},{hex(id(sparse_offset_group_batch))},{hex(id(E))},{hex(id(V))}")
                 ly.append(V)
 
