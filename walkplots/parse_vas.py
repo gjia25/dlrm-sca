@@ -3,6 +3,7 @@ from math import ceil, floor
 import sys
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
+import matplotlib.transforms as transforms
 
 filename = sys.argv[1]
 NUM_LOOKUPS = eval(sys.argv[2]) # 26 for kaggle
@@ -123,29 +124,35 @@ def plot_lookups(filename, runs_to_addrs):
     fig = plt.figure(figsize=(NUM_LOOKUPS, 7))
     sub_axes = []
     colors = ["blue", "red", "green"]
+    markers = ["s", "o", "^"]
+    dx = .05
+    offs = [-dx, 0, dx]
+    # offset = lambda p: transforms.ScaledTranslation(p/72.,0, plt.gcf().dpi_scale_trans)
     for run, xy in runs_to_addrs.items():
         x, y = xy
         for i in range(NUM_LOOKUPS):
-            if run == 0:
+            translation = None
+            if run == 2:
                 ax = fig.add_subplot(1, NUM_LOOKUPS, i+1)
                 sub_axes.append(ax)
             else:
                 ax = sub_axes[i]
-            ax.scatter(x[2*i], y[2*i], s=2, marker='s', label=run, color=colors[run])
+            ax.scatter(x[2*i] + offs[run], y[2*i], s=4, marker=markers[run], label=run, color=colors[run])
+            ax.set_xlim([i - 4*dx, i + 4*dx])
             ax.set_xticks([i])
             ax.set_yticks([])
             # ax.get_yaxis().set_major_locator(ticker.MaxNLocator(2))
             # ax.get_yaxis().set_major_formatter(ticker.FuncFormatter(lambda x, p: '0x%08x' % int(x)))
             # ax.tick_params(axis='y', labelrotation=90)
     
-    sub_axes[0].set_ylabel("VPN", fontsize=14)
+    sub_axes[0].set_ylabel("VA", fontsize=14)
     sub_axes[1].set_xlabel("Lookup #", fontsize=14)    
     sub_axes[NUM_LOOKUPS//2].set_title("Embedding accesses per inference request")
     sub_axes[NUM_LOOKUPS//2].legend(markerscale=4, ncols=3, bbox_to_anchor=(0, -0.25), loc="lower center", title="Inference #")
     plt.subplots_adjust(bottom=0.2)
     fig.tight_layout()
-    # plt.savefig(f"{filename}-lookups.png")
-    plt.savefig(f"{filename}-lookups-masked.png")
+    plt.savefig(f"{filename}-lookups.png")
+    # plt.savefig(f"{filename}-lookups-masked.png")
     plt.show()
     
 
@@ -178,17 +185,17 @@ if __name__ == '__main__':
     runs_to_addrs = {}
 
     with open(filename, "r") as file:
+        total_lookups = 0
         curr_run = -1
         src_data = -1
         ip = -1
         idx = -1
-        lookup = 0
         for line in file:
             if line.startswith("Sample"):
                 curr_run = int(line.split(" ")[1])
                 if curr_run > 0:
                     curr_run -= 1
-                    lookup = 0
+
             elif line.startswith("src="):
                 src_data = int(line[line.find("src_data=")+len("src_data="):], 16)
             elif line.startswith("ip="):
@@ -200,12 +207,17 @@ if __name__ == '__main__':
                     runs_to_addrs[curr_run] = [[], []]
                 
                 # mask out page offset
-                ip = ip & 0xFFFFFFFFFFFFF000
-
-                runs_to_addrs[curr_run][0].extend([lookup] * 2)
-                runs_to_addrs[curr_run][1].append(ip)
-                runs_to_addrs[curr_run][1].append(src_data)
-                lookup += 1
+                # ip = ip & 0xFFFFFFFFFFFFF000
+                lookup = total_lookups % NUM_LOOKUPS
+                curr_round = total_lookups // (NUM_LOOKUPS * NUM_RUNS)
+                if curr_round > 0:
+                    assert runs_to_addrs[curr_run][1][2*lookup] == ip, f"ip = {runs_to_addrs[curr_run][1][2*lookup]} but got {ip}"
+                    assert runs_to_addrs[curr_run][1][2*lookup+1] == src_data, f"src_data = {runs_to_addrs[curr_run][1][2*lookup+1]} but got {src_data}"
+                else:
+                    runs_to_addrs[curr_run][0].extend([lookup] * 2)
+                    runs_to_addrs[curr_run][1].append(ip)
+                    runs_to_addrs[curr_run][1].append(src_data)
+                total_lookups += 1
     
     plot_lookups(filename, runs_to_addrs)
     # stats = get_stats(runs_to_addrs)
