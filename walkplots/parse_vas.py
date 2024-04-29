@@ -121,7 +121,7 @@ def plot_yranges(filename, y_ranges):
     plt.show()
 
 def plot_lookups(filename, runs_to_addrs):
-    fig = plt.figure(figsize=(NUM_LOOKUPS, 7))
+    fig = plt.figure(figsize=(NUM_LOOKUPS, 8))
     sub_axes = []
     colors = ["blue", "red", "green"]
     markers = ["s", "o", "^"]
@@ -132,7 +132,7 @@ def plot_lookups(filename, runs_to_addrs):
         x, y = xy
         for i in range(NUM_LOOKUPS):
             translation = None
-            if run == 2:
+            if run == 0: # 2 if multi run kaggle
                 ax = fig.add_subplot(1, NUM_LOOKUPS, i+1)
                 sub_axes.append(ax)
             else:
@@ -145,14 +145,14 @@ def plot_lookups(filename, runs_to_addrs):
             # ax.get_yaxis().set_major_formatter(ticker.FuncFormatter(lambda x, p: '0x%08x' % int(x)))
             # ax.tick_params(axis='y', labelrotation=90)
     
-    sub_axes[0].set_ylabel("VA", fontsize=14)
+    sub_axes[0].set_ylabel("VPN", fontsize=14)
     sub_axes[1].set_xlabel("Lookup #", fontsize=14)    
     sub_axes[NUM_LOOKUPS//2].set_title("Embedding accesses per inference request")
     sub_axes[NUM_LOOKUPS//2].legend(markerscale=4, ncols=3, bbox_to_anchor=(0, -0.25), loc="lower center", title="Inference #")
     plt.subplots_adjust(bottom=0.2)
     fig.tight_layout()
-    plt.savefig(f"{filename}-lookups.png")
-    # plt.savefig(f"{filename}-lookups-masked.png")
+    # plt.savefig(f"{filename}-lookups.png")
+    plt.savefig(f"{filename}-lookups-masked.png")
     plt.show()
     
 
@@ -207,7 +207,7 @@ if __name__ == '__main__':
                     runs_to_addrs[curr_run] = [[], []]
                 
                 # mask out page offset
-                # ip = ip & 0xFFFFFFFFFFFFF000
+                ip = ip & 0xFFFFFFFFFFFFF000
                 lookup = total_lookups % NUM_LOOKUPS
                 curr_round = total_lookups // (NUM_LOOKUPS * NUM_RUNS)
                 if curr_round > 0:
