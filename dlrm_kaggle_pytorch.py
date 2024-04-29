@@ -78,9 +78,6 @@ with warnings.catch_warnings():
 # import torch.nn.functional as Functional
 # from torch.nn.parameter import Parameter
 
-custom_test_nbatches = 1
-custom_test_batchsize = 4
-
 exc = getattr(builtins, "IOError", "FileNotFoundError")
 
 def time_wrap(use_gpu):
@@ -213,7 +210,7 @@ class DLRM_Net(nn.Module):
     def create_emb(self, m, ln, weighted_pooling=None):
         emb_l = nn.ModuleList()
         v_W_l = []
-        print("idx,emb_va,emb_i_va,n,m,weight_bytes")
+        # print("idx,emb_va,emb_i_va,n,m,weight_bytes")
         for i in range(0, ln.size):
             if ext_dist.my_size > 1:
                 if i not in self.local_emb_indices:
@@ -256,7 +253,7 @@ class DLRM_Net(nn.Module):
             else:
                 v_W_l.append(torch.ones(n, dtype=torch.float32))
             emb_l.append(EE)
-            print(f"{i},{hex(id(emb_l))},{hex(id(EE))},{n},{m},{EE.weight.element_size() * EE.weight.nelement()}")
+            # print(f"{i},{hex(id(emb_l))},{hex(id(EE))},{n},{m},{EE.weight.element_size() * EE.weight.nelement()}")
         return emb_l, v_W_l
 
     def __init__(
@@ -426,7 +423,7 @@ class DLRM_Net(nn.Module):
                     sparse_offset_group_batch,
                     per_sample_weights=per_sample_weights,
                 )
-                print(f"{k},{hex(id(sparse_index_group_batch))},{hex(id(sparse_offset_group_batch))},{hex(id(E))},{hex(id(V))}")
+                print(f"{k},{hex(id(sparse_index_group_batch))},{hex(id(sparse_offset_group_batch))},{hex(id(E))},{hex(id(E.weight))},{hex(id(E.weight.data))}")
                 ly.append(V)
 
         # print(ly)
@@ -750,22 +747,18 @@ def inference(
         X_test, lS_o_test, lS_i_test, T_test, W_test, CBPP_test = unpack_batch(
             testBatch
         )
-        print(f"Testing batch {i}, {X_test.size()} samples: X_test = {X_test}", flush=True)
-        desired_idx = np.array([0,2,3])
-        # np.random.shuffle(desired_idx)
-        for idx in desired_idx:
-            print(f"Sample {idx} with sparse indices: {lS_i_test[idx]}")
-            # forward pass
-            Z_test = dlrm_wrap(
-                X_test[idx].reshape(1, 13),
-                lS_o_test[:, 0].reshape(26, 1), # offsets always 0
-                lS_i_test[:, idx].reshape(26, 1),
-                use_gpu,
-                device,
-                ndevices=ndevices,
-            )
-            # skip accuracy testing
-        break # skip rest of batches
+        # print(f"Testing batch {i}, {X_test.size()} samples: X_test = {X_test}", flush=True)        
+        print(f"Sample {i}: {lS_i_test[:, i]}")
+        # forward pass
+        Z_test = dlrm_wrap(
+            X_test[i].reshape(1, 13),
+            lS_o_test[:, 0].reshape(26, 1), # offsets always 0
+            lS_i_test[:, i].reshape(26, 1),
+            use_gpu,
+            device,
+            ndevices=ndevices,
+        )
+        # skip accuracy testing
 
     if args.mlperf_logging:
         with record_function("DLRM mlperf sklearn metrics compute"):
@@ -845,8 +838,6 @@ def inference(
 
 
 def run():
-    global custom_test_nbatches
-    global custom_test_batchsize
     ### parse arguments ###
     parser = argparse.ArgumentParser(
         description="Train Deep Learning Recommendation Model (DLRM)"
@@ -885,7 +876,7 @@ def run():
     parser.add_argument("--round-targets", type=bool, default=True)
     # data
     parser.add_argument("--data-size", type=int, default=1)
-    parser.add_argument("--num-batches", type=int, default=custom_test_nbatches)
+    parser.add_argument("--num-batches", type=int, default=0)
     parser.add_argument(
         "--data-generation", type=str,choices=["random","dataset","internal"], default="dataset"
     )  # synthetic, dataset or internal
@@ -909,7 +900,7 @@ def run():
     parser.add_argument("--num-workers", type=int, default=0)
     parser.add_argument("--memory-map", action="store_true", default=False)
     # training
-    parser.add_argument("--mini-batch-size", type=int, default=custom_test_batchsize)
+    parser.add_argument("--mini-batch-size", type=int, default=1)
     parser.add_argument("--nepochs", type=int, default=1)
     parser.add_argument("--learning-rate", type=float, default=0.1)
     parser.add_argument("--print-precision", type=int, default=5)
