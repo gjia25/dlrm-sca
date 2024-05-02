@@ -416,14 +416,14 @@ class DLRM_Net(nn.Module):
 
                 ly.append(QV)
             else:
-                os.kill(os.getpid(), signal.SIGTRAP) # sigtrap for debugger
+                # os.kill(os.getpid(), signal.SIGTRAP) # sigtrap for debugger
                 E = emb_l[k]
                 V = E(
                     sparse_index_group_batch,
                     sparse_offset_group_batch,
                     per_sample_weights=per_sample_weights,
                 )
-                print(f"{k},{hex(id(sparse_index_group_batch))},{hex(id(sparse_offset_group_batch))},{hex(id(E))},{hex(id(E.weight))},{hex(id(E.weight.data))}")
+                # print(f"{k},{hex(id(sparse_index_group_batch))},{hex(id(sparse_offset_group_batch))},{hex(id(E))},{hex(id(E.weight))},{hex(id(E.weight.data))}")
                 ly.append(V)
 
         # print(ly)
@@ -744,21 +744,53 @@ def inference(
         targets = []
     
     for i, testBatch in enumerate(test_ld):
+        # early exit if nbatches was set by the user and was exceeded
+        if nbatches > 0 and i >= nbatches:
+            break
+
         X_test, lS_o_test, lS_i_test, T_test, W_test, CBPP_test = unpack_batch(
             testBatch
         )
-        # print(f"Testing batch {i}, {X_test.size()} samples: X_test = {X_test}", flush=True)        
-        print(f"Sample {i}: {lS_i_test[:, i]}")
+
+        # Skip the batch if batch size not multiple of total ranks
+        if ext_dist.my_size > 1 and X_test.size(0) % ext_dist.my_size != 0:
+            print("Warning: Skiping the batch %d with size %d" % (i, X_test.size(0)))
+            continue
+
         # forward pass
         Z_test = dlrm_wrap(
-            X_test[i].reshape(1, 13),
-            lS_o_test[:, 0].reshape(26, 1), # offsets always 0
-            lS_i_test[:, i].reshape(26, 1),
+            X_test,
+            lS_o_test,
+            lS_i_test,
             use_gpu,
             device,
             ndevices=ndevices,
         )
-        # skip accuracy testing
+        ### gather the distributed results on each rank ###
+        # For some reason it requires explicit sync before all_gather call if
+        # tensor is on GPU memory
+        if Z_test.is_cuda:
+            torch.cuda.synchronize()
+        (_, batch_split_lengths) = ext_dist.get_split_lengths(X_test.size(0))
+        if ext_dist.my_size > 1:
+            Z_test = ext_dist.all_gather(Z_test, batch_split_lengths)
+
+        if args.mlperf_logging:
+            S_test = Z_test.detach().cpu().numpy()  # numpy array
+            T_test = T_test.detach().cpu().numpy()  # numpy array
+            scores.append(S_test)
+            targets.append(T_test)
+        else:
+            with record_function("DLRM accuracy compute"):
+                # compute loss and accuracy
+                S_test = Z_test.detach().cpu().numpy()  # numpy array
+                T_test = T_test.detach().cpu().numpy()  # numpy array
+
+                mbs_test = T_test.shape[0]  # = mini_batch_size except last
+                A_test = np.sum((np.round(S_test, 0) == T_test).astype(np.uint8))
+
+                test_accu += A_test
+                test_samp += mbs_test
 
     if args.mlperf_logging:
         with record_function("DLRM mlperf sklearn metrics compute"):
