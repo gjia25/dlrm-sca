@@ -742,7 +742,8 @@ def inference(
     if args.mlperf_logging:
         scores = []
         targets = []
-    
+
+    kagout = open("kagout", "w") 
     for i, testBatch in enumerate(test_ld):
         # early exit if nbatches was set by the user and was exceeded
         if nbatches > 0 and i >= nbatches:
@@ -756,7 +757,8 @@ def inference(
         if ext_dist.my_size > 1 and X_test.size(0) % ext_dist.my_size != 0:
             print("Warning: Skiping the batch %d with size %d" % (i, X_test.size(0)))
             continue
-
+        # print(f"Batch {i}: {lS_i_test}")
+        kagout.write(f"Batch {i}: {lS_i_test}\n")
         # forward pass
         Z_test = dlrm_wrap(
             X_test,
@@ -788,9 +790,15 @@ def inference(
 
                 mbs_test = T_test.shape[0]  # = mini_batch_size except last
                 A_test = np.sum((np.round(S_test, 0) == T_test).astype(np.uint8))
+                
+                # print(f"output={np.round(S_test, 0)}") # dlrm output
+                kagout.write(f"output={np.round(S_test, 0)}\n")
+                # print(f"actual={T_test}") # actual
+                kagout.write(f"actual={T_test}\n")
 
                 test_accu += A_test
                 test_samp += mbs_test
+    kagout.close()
 
     if args.mlperf_logging:
         with record_function("DLRM mlperf sklearn metrics compute"):
