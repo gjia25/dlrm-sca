@@ -46,6 +46,7 @@
 #define PAGEMAP_CHUNK_SIZE	8
 #define IDLEMAP_CHUNK_SIZE	8
 #define IDLEMAP_BUF_SIZE	4096
+#define PAGESIZE	4096
 
 // big enough to span 740 Gbytes:
 #define MAX_IDLEMAP_SIZE	(20 * 1024 * 1024)
@@ -101,6 +102,8 @@ int mapidle(pid_t pid, uint64_t time, unsigned long long mapstart, unsigned long
 
 	// XXX: handle huge pages
 	pagesize = getpagesize();
+	assert(pagesize == PAGESIZE);
+	
 	pagebufsize = (PAGEMAP_CHUNK_SIZE * (mapend - mapstart)) / pagesize;
 	if ((pagebuf = malloc(pagebufsize)) == NULL) {
 		printf("Can't allocate memory for pagemap buf (%lld bytes)",
@@ -134,7 +137,7 @@ int mapidle(pid_t pid, uint64_t time, unsigned long long mapstart, unsigned long
 		goto out;
 	}
 
-	for (i = 0; i < pagebufsize / PAGEMAP_CHUNK_SIZE; i++) {
+	for (i = 0; i < pagebufsize / sizeof (unsigned long long); i++) {
 		vaddr = mapstart + i * pagesize;
 		// convert virtual address p to physical PFN
 		pfn = p[i] & PFN_MASK;
@@ -149,14 +152,13 @@ int mapidle(pid_t pid, uint64_t time, unsigned long long mapstart, unsigned long
 			err = 1;
 			goto out;
 		}
-		idlebits = g_idlebuf[idleidx];
-		// printf("g_idlebufsize=%d idleidx=%d p=%llx pfn=%llx idlebits=%llx\n", g_idlebufsize, idleidx, p[i], pfn, idlebits);
+		idlebits = g_idlebuf[idleidx]; // idlebits = g_idlebuf[idlemapp / 8];
 
 		if (!(idlebits & (1ULL << (pfn % 64)))) {
 			g_activepages++;
 
 			// Append pfn, filepath, and current time to the output file
-			fprintf(g_output_file, "%llu,%d,%llx,%llx,%s\n", time, g_num_lookups, vaddr, pfn, filepath);
+			fprintf(g_output_file, "%d,%llx,%llx,%s\n", g_num_lookups, (vaddr) / PAGE_SIZE, pfn, filepath);
 		}
 		g_walkedpages++;
 	}
@@ -197,6 +199,9 @@ int walkmaps(pid_t pid)
 			printf("MAP %llx-%llx %s\n", mapstart, mapend, filepath);
 		if (mapstart > PAGE_OFFSET)
 			continue;	// page idle tracking is user mem only
+		if (strcmp(filepath, "[stack]") != 0 && strcmp(filepath, "[heap]")  != 0 ) {
+			continue; // ignore memory regions that are not stack or heap
+		}
 		if (mapidle(pid, time, mapstart, mapend, filepath)) {
 			printf("Error setting map %llx-%llx. Exiting.\n",
 			    mapstart, mapend);
@@ -269,7 +274,7 @@ int loadidlemap()
 			break;
 		}
 		p++;
-		g_idlebufsize += IDLEMAP_CHUNK_SIZE;
+		g_idlebufsize++; // g_idlebufsize += IDLEMAP_CHUNK_SIZE;
 	}
 	fclose(idlefile);
 
@@ -283,19 +288,23 @@ int loadidlemap()
 // parent reads page table entry flags, then sends SIGUSR1 back to child
 void signal_handler(int signal_num)
 {
-    if (signal_num == SIGUSR1) {
+	if (signal_num == SIGUSR1) {
         if (g_in_lookup == 0) {
 			ssize_t entries_written;
 			g_in_lookup = 1;
             g_num_lookups++;
+			FILE *fp = fopen ("/proc/sys/vm/drop_caches", "w");
+			fprintf(fp, "3");
+			fclose(fp);
 			entries_written = setidlemap(); // set idle flags to 1
-			// printf("entries_written = %d\n", entries_written);
+			printf("entries_written = %d\n", entries_written);
         } else {
 			g_walkedpages = 0;
 			loadidlemap(); // cache page idle map
+			printf("g_idlebufsize = %llu\n", g_idlebufsize);
 			walkmaps(g_pid); // read page flags
 			g_in_lookup = 0;
-			// printf("g_walkedpages = %d\n", g_walkedpages);
+			printf("g_walkedpages = %d\n", g_walkedpages);
         }
 		kill(g_pid, SIGUSR1);
     }

@@ -380,7 +380,8 @@ class DLRM_Net(nn.Module):
         # 3. for a list of embedding tables there is a list of batched lookups
 
         ly = [] 
-        for k, sparse_index_group_batch in enumerate(lS_i):
+        signal.signal(signal.SIGUSR1, signal_handler)
+        for k, sparse_index_group_batch in enumerate(lS_i):   
             sparse_offset_group_batch = lS_o[k]
             
             # embedding lookup
@@ -416,14 +417,16 @@ class DLRM_Net(nn.Module):
 
                 ly.append(QV)
             else:
-                # os.kill(os.getpid(), signal.SIGTRAP) # sigtrap for debugger
+                os.kill(self.parent_pid, signal.SIGUSR1)
+                signal.pause()
                 E = emb_l[k]
                 V = E(
                     sparse_index_group_batch,
                     sparse_offset_group_batch,
                     per_sample_weights=per_sample_weights,
                 )
-                # print(f"{k},{hex(id(sparse_index_group_batch))},{hex(id(sparse_offset_group_batch))},{hex(id(E))},{hex(id(E.weight))},{hex(id(E.weight.data))}")
+                os.kill(self.parent_pid, signal.SIGUSR1)
+                signal.pause()
                 ly.append(V)
 
         # print(ly)
@@ -743,7 +746,9 @@ def inference(
         scores = []
         targets = []
     
+    print('inferring...')
     for i, testBatch in enumerate(test_ld):
+        print(i, 'of', nbatches, flush=True)
         # early exit if nbatches was set by the user and was exceeded
         if nbatches > 0 and i >= nbatches:
             break
@@ -908,7 +913,7 @@ def run():
     parser.add_argument("--round-targets", type=bool, default=True)
     # data
     parser.add_argument("--data-size", type=int, default=1)
-    parser.add_argument("--num-batches", type=int, default=0)
+    parser.add_argument("--num-batches", type=int, default=1e6) # was 0
     parser.add_argument(
         "--data-generation", type=str,choices=["random","dataset","internal"], default="dataset"
     )  # synthetic, dataset or internal
