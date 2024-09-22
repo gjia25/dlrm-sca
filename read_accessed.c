@@ -7,6 +7,8 @@
 #include <linux/proc_fs.h>
 #include <linux/seq_file.h>
 #include <linux/highmem.h>
+#include <linux/rwsem.h>
+#include <linux/mm_types.h>
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Clarity");
@@ -30,10 +32,9 @@ static int result_count = 0;
 static ssize_t read_accessed_write(struct file *file, const char __user *buffer, size_t count, loff_t *pos);
 static ssize_t read_accessed_read(struct file *file, char __user *buffer, size_t count, loff_t *pos);
 
-static const struct file_operations proc_fops = {
-    .owner = THIS_MODULE,
-    .write = read_accessed_write,
-    .read = read_accessed_read,
+static const struct proc_ops proc_fops = {
+    .proc_write = read_accessed_write,
+    .proc_read = read_accessed_read,
 };
 
 static int read_accessed_pages(struct mm_struct *mm, unsigned long start, unsigned long end) {
@@ -70,9 +71,10 @@ static int read_accessed_pages(struct mm_struct *mm, unsigned long start, unsign
         if (pte_present(*pte) && pte_young(*pte)) {
             results[result_count].vaddr = addr;
             result_count++;
-            if (result_count >= MAX_RESULTS)
+            if (result_count >= MAX_RESULTS){
                 printk(KERN_INFO "Max result count reached :(\n");
                 break;
+            }
         }
 
         pte_unmap(pte);
@@ -93,7 +95,7 @@ static ssize_t read_accessed_write(struct file *file, const char __user *buffer,
         return -EFAULT;
 
     rcu_read_lock();
-    task = find_task_by_vpid(req.pid);
+    task = pid_task(find_vpid(req.pid), PIDTYPE_PID);
     if (!task) {
         rcu_read_unlock();
         return -ESRCH;
@@ -105,9 +107,9 @@ static ssize_t read_accessed_write(struct file *file, const char __user *buffer,
         return -EINVAL;
     }
 
-    down_read(&mm->mmap_sem);
+    down_read(&mm->mmap_lock);
     read_accessed_pages(mm, req.start_vaddr, req.end_vaddr);
-    up_read(&mm->mmap_sem);
+    up_read(&mm->mmap_lock);
     rcu_read_unlock();
 
     return count;

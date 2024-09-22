@@ -47,11 +47,6 @@ pid_t g_pid;
 struct read_request g_requests[MAX_REQUESTS];
 int g_num_requests = 0;
 
-struct clear_request {
-    pid_t pid;
-    unsigned long start_vaddr;
-    unsigned long end_vaddr;
-};
 
 void clear_accessed_bits(unsigned long start_vaddr, unsigned long end_vaddr) {
     int fd;
@@ -119,7 +114,9 @@ void append_accessed_pages(int request_idx) {
     FILE *file;
 
     struct read_request req = g_requests[request_idx];
-
+    
+    printf("Reading accessed bits for %lx-%lx\n", req.start_vaddr, req.end_vaddr);
+    
     fd = open(PROC_READ_ACCESSED, O_RDWR);
     if (fd == -1) {
         perror("open");
@@ -173,7 +170,7 @@ void signal_handler(int signal_num)
 			g_in_lookup = 1;
             g_num_lookups++;
 			parse_maps_and_clear();
-        } else { 
+        } else {
             for (int i = 0; i < g_num_requests; i++) {
                 append_accessed_pages(i);
             }
