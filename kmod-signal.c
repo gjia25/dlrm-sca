@@ -115,22 +115,21 @@ void append_accessed_pages(int request_idx) {
 
     struct read_request req = g_requests[request_idx];
     
-    printf("Reading accessed bits for %lx-%lx\n", req.start_vaddr, req.end_vaddr);
-    
     fd = open(PROC_READ_ACCESSED, O_RDWR);
     if (fd == -1) {
         perror("open");
         exit(EXIT_FAILURE);
     }
-
+    printf("Writing request for %lx-%lx\n", req.start_vaddr, req.end_vaddr);
     ret = write(fd, &req, sizeof(req));
     if (ret != sizeof(req)) {
         perror("write");
         close(fd);
         exit(EXIT_FAILURE);
     }
-
+    printf("Seek set\n");
     lseek(fd, 0, SEEK_SET);
+    printf("Reading\n");
     count = read(fd, results, sizeof(results));
     if (count == -1) {
         perror("read");
@@ -139,7 +138,8 @@ void append_accessed_pages(int request_idx) {
     }
 
     int num_entries = count / sizeof(struct result_entry);
-    
+    printf("Read %d entries\n", num_entries);
+
     char filename[PATHSIZE];
     sprintf(filename, "%s/dlrm-%llu", g_outdir, g_ts0.tv_sec * (uint64_t)1000000 + g_ts0.tv_usec);
     file = fopen(filename, "a");
@@ -150,7 +150,7 @@ void append_accessed_pages(int request_idx) {
     }
 
     for (int i = 0; i < num_entries; i++) {
-        fprintf(file, "%d0x%lx\n", g_num_lookups, results[i].vaddr);
+        fprintf(file, "%d, 0x%lx\n", g_num_lookups, results[i].vaddr);
     }
 
     fclose(file);

@@ -60,6 +60,7 @@ static int clear_accessed_bits(struct mm_struct *mm, unsigned long start, unsign
         }
 
         flush_cache_range(vma, vma_start, vma_end);
+        printk(KERN_INFO "Cleared cache range for %lx-%lx", vma_start, vma_end);
     }
     return 0;
 }

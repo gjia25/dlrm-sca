@@ -20,7 +20,7 @@ struct read_request {
     unsigned long end_vaddr;
 };
 
-#define MAX_RESULTS 4096
+#define MAX_RESULTS 2048
 
 struct result_entry {
     unsigned long vaddr;
@@ -72,14 +72,14 @@ static int read_accessed_pages(struct mm_struct *mm, unsigned long start, unsign
             results[result_count].vaddr = addr;
             result_count++;
             if (result_count >= MAX_RESULTS){
-                printk(KERN_INFO "Max result count reached :(\n");
+                printk(KERN_INFO "read_accessed: Max result count reached :(\n");
                 break;
             }
         }
 
         pte_unmap(pte);
     }
-
+    printk(KERN_INFO "read_accessed: Read %d results for %lx-%lx\n", result_count, start, end);
     return 0;
 }
 
@@ -94,6 +94,7 @@ static ssize_t read_accessed_write(struct file *file, const char __user *buffer,
     if (copy_from_user(&req, buffer, count))
         return -EFAULT;
 
+    printk(KERN_INFO "read_accessed: Received request for %lx-%lx\n", req.start_vaddr, req.end_vaddr);
     rcu_read_lock();
     task = pid_task(find_vpid(req.pid), PIDTYPE_PID);
     if (!task) {
@@ -111,12 +112,13 @@ static ssize_t read_accessed_write(struct file *file, const char __user *buffer,
     read_accessed_pages(mm, req.start_vaddr, req.end_vaddr);
     up_read(&mm->mmap_lock);
     rcu_read_unlock();
-
+    printk(KERN_INFO "read_accessed: Returning %d from request\n", count);
     return count;
 }
 
 static ssize_t read_accessed_read(struct file *file, char __user *buffer, size_t count, loff_t *pos) {
     size_t available = result_count * sizeof(struct result_entry);
+    printk(KERN_INFO "read_accessed: %d bytes available (%d results)\n", available, result_count);
     if (*pos >= available)
         return 0;
 
@@ -131,14 +133,15 @@ static ssize_t read_accessed_read(struct file *file, char __user *buffer, size_t
 }
 
 static int __init read_accessed_init(void) {
-    proc_create("read_accessed", 0666, NULL, &proc_fops);
-    printk(KERN_INFO "Initializing read accessed module\n");
+    proc_create("read_accessed", 0644, NULL, &proc_fops);
+    printk(KERN_INFO "Initializing read_accessed module\n");
     return 0;
 }
 
 static void __exit read_accessed_exit(void) {
+    printk(KERN_INFO "Preparing to exit read_accessed module\n");
     remove_proc_entry("read_accessed", NULL);
-    printk(KERN_INFO "Exiting read accessed module\n");
+    printk(KERN_INFO "Exiting read_accessed module\n");
 }
 
 module_init(read_accessed_init);
