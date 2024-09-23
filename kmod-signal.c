@@ -39,7 +39,7 @@ struct result_entry {
 #define MAX_REQUESTS 8
 
 // globals
-char *g_outdir = "/dev/shm";
+char *g_outdir = "/run/user/1000/dlrm-sca";
 static struct timeval g_ts0;
 int g_in_lookup = 0;
 int g_num_lookups = 0;
@@ -109,7 +109,7 @@ void parse_maps_and_clear() {
 
 void append_accessed_pages(int request_idx) {
     int fd, ret;
-    struct result_entry results[4096];
+    struct result_entry results[1024];
     ssize_t count;
     FILE *file;
 
@@ -120,14 +120,12 @@ void append_accessed_pages(int request_idx) {
         perror("open");
         exit(EXIT_FAILURE);
     }
-    printf("Writing request for %lx-%lx\n", req.start_vaddr, req.end_vaddr);
     ret = write(fd, &req, sizeof(req));
     if (ret != sizeof(req)) {
         perror("write");
         close(fd);
         exit(EXIT_FAILURE);
     }
-    printf("Reading\n");
     count = read(fd, results, sizeof(results));
     if (count == -1) {
         perror("read");
@@ -136,7 +134,6 @@ void append_accessed_pages(int request_idx) {
     }
 
     int num_entries = count / sizeof(struct result_entry);
-    printf("Read %d entries\n", num_entries);
 
     char filename[PATHSIZE];
     sprintf(filename, "%s/dlrm-%llu", g_outdir, g_ts0.tv_sec * (uint64_t)1000000 + g_ts0.tv_usec);

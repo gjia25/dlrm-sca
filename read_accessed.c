@@ -20,7 +20,7 @@ struct read_request {
     unsigned long end_vaddr;
 };
 
-#define MAX_RESULTS 2048
+#define MAX_RESULTS 1024
 
 struct result_entry {
     unsigned long vaddr;
@@ -111,9 +111,7 @@ static ssize_t read_accessed_write(struct file *file, const char __user *buffer,
     down_read(&mm->mmap_lock);
     read_accessed_pages(mm, req.start_vaddr, req.end_vaddr);
     up_read(&mm->mmap_lock);
-    printk(KERN_INFO "read_accessed: pre rcu_read_unlock\n");
     rcu_read_unlock();
-    printk(KERN_INFO "read_accessed: Returning %d from request\n", count);
     return count;
 }
 
