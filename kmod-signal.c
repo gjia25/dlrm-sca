@@ -96,8 +96,8 @@ void parse_maps_and_clear() {
     }
 
     while (fgets(line, sizeof(line), maps)) {
-        if (sscanf(line, "%lx-%lx %s %lx %s %lu %s", &start, &end, perm, &offset, dev, &inode, mapname) == 7) {
-            if (strstr(mapname, "[heap]") || strstr(mapname, "[stack]")) {
+        if (sscanf(line, "%lx-%lx %s %lx %s %lu %s", &start, &end, perm, &offset, dev, &inode, mapname) >= 6) {
+            if (strstr(mapname, "[heap]") || strstr(mapname, "[stack]") || mapname[0] == '\0') {
                 printf("Clearing accessed bits for %s: %lx-%lx\n", mapname, start, end);
                 clear_accessed_bits(start, end);
             }
