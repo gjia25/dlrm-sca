@@ -127,8 +127,6 @@ void append_accessed_pages(int request_idx) {
         close(fd);
         exit(EXIT_FAILURE);
     }
-    printf("Seek set\n");
-    lseek(fd, 0, SEEK_SET);
     printf("Reading\n");
     count = read(fd, results, sizeof(results));
     if (count == -1) {
