@@ -14,7 +14,6 @@
 #include <sys/time.h>
 #include <fcntl.h>
 
-#define PROC_MAPS_FORMAT "/proc/%d/maps"
 #define PROC_CLEAR_ACCESSED "/proc/clear_accessed_bits"
 struct clear_request {
     pid_t pid;
@@ -36,17 +35,47 @@ struct result_entry {
 #define LINESIZE		256
 #define PAGEMAP_CHUNK_SIZE	8
 #define CHAR_BIT 8
-#define MAX_REQUESTS 8
+#define MAX_REQUESTS 1024
+
+#define INPUT_ADDRS "/dev/shm/addrs"
+#define NUM_FEATURES 26
+#define SIZE_LIST (int[26]){1460,583,10131227,2202608,305,24,12517,633,3,93145,5683,8351593,3194,27,14992,5461306,10,5652,2173,4,7046547,18,15,286181,105,142572}
+#define EMB_SIZE 64
 
 // globals
 char *g_outdir = "/run/user/1000/dlrm-sca";
+unsigned long g_input_addrs[NUM_FEATURES];
 static struct timeval g_ts0;
+int g_got_inputs = 0;
 int g_in_lookup = 0;
 int g_num_lookups = 0;
 pid_t g_pid;
 struct read_request g_requests[MAX_REQUESTS];
 int g_num_requests = 0;
 
+void read_input_addrs(unsigned long *list) {
+    FILE *file;
+    int count = 0;
+
+    file = fopen(INPUT_ADDRS, "r");
+    if (!file) {
+        perror("failed to open input_addrs");
+        exit(EXIT_FAILURE);
+    }
+
+    for (int i = 0; i < NUM_FEATURES; i++) {
+        if (fscanf(file, "%lu\n", &list[i]) != 1) {
+            break;
+        }
+        count++;
+    }
+    fclose(file);
+
+    if (count != NUM_FEATURES) {
+        perror("failed to read all input_addrs");
+        exit(EXIT_FAILURE);
+    }
+}
 
 void clear_accessed_bits(unsigned long start_vaddr, unsigned long end_vaddr) {
     int fd;
@@ -80,31 +109,17 @@ void clear_accessed_bits(unsigned long start_vaddr, unsigned long end_vaddr) {
     g_num_requests++;
 }
 
-void parse_maps_and_clear() {
-    char path[256];
-    FILE *maps;
-    char line[256];
+void clear_bits_for_lookups() {
     unsigned long start, end;
-    char perm[5], dev[6], mapname[256];
-    unsigned long offset, inode;
+    int i;
 
-    snprintf(path, sizeof(path), PROC_MAPS_FORMAT, g_pid);
-    maps = fopen(path, "r");
-    if (!maps) {
-        perror("fopen");
-        exit(EXIT_FAILURE);
+    for (int i = 0; i < NUM_FEATURES; i++) {
+        start = g_input_addrs[i] & 0xFFFFFFFFFFFFF000;
+        end = (g_input_addrs[i] + EMB_SIZE * SIZE_LIST[i]) & 0xFFFFFFFFFFFFF000;
+        printf("Clearing accessed bits for %lx-%lx", start, end);
+        clear_accessed_bits(start, end);
     }
 
-    while (fgets(line, sizeof(line), maps)) {
-        if (sscanf(line, "%lx-%lx %s %lx %s %lu %s", &start, &end, perm, &offset, dev, &inode, mapname) >= 6) {
-            if (strstr(mapname, "[heap]") || strstr(mapname, "[stack]") || mapname[0] == '\0') {
-                printf("Clearing accessed bits for %s: %lx-%lx\n", mapname, start, end);
-                clear_accessed_bits(start, end);
-            }
-        }
-    }
-
-    fclose(maps);
 }
 
 void append_accessed_pages(int request_idx) {
@@ -161,10 +176,13 @@ void append_accessed_pages(int request_idx) {
 void signal_handler(int signal_num)
 {
     if (signal_num == SIGUSR1) {
-        if (g_in_lookup == 0) {
+        if (g_got_inputs == 0) {
+            read_input_addrs(g_input_addrs);
+            g_got_inputs = 1;
+        } else if (g_in_lookup == 0) {
 			g_in_lookup = 1;
             g_num_lookups++;
-			parse_maps_and_clear();
+			clear_bits_for_lookups();
         } else {
             for (int i = 0; i < g_num_requests; i++) {
                 append_accessed_pages(i);

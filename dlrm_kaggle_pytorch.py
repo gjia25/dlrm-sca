@@ -253,7 +253,10 @@ class DLRM_Net(nn.Module):
             else:
                 v_W_l.append(torch.ones(n, dtype=torch.float32))
             emb_l.append(EE)
-            # print(f"{i},{hex(id(emb_l))},{hex(id(EE))},{n},{m},{EE.weight.element_size() * EE.weight.nelement()}")
+        with open('/dev/shm/addrs', 'w') as f:
+            for EE in emb_l:
+                f.write(f'{EE.weight.data.data_ptr()}\n')
+        os.kill(self.parent_pid, signal.SIGUSR1)
         return emb_l, v_W_l
 
     def __init__(
@@ -361,6 +364,7 @@ class DLRM_Net(nn.Module):
                 sys.exit(
                     "ERROR: --loss-function=" + self.loss_function + " is not supported"
                 )
+        print('inited')
 
 
     def apply_mlp(self, x, layers):
@@ -381,6 +385,9 @@ class DLRM_Net(nn.Module):
 
         ly = [] 
         signal.signal(signal.SIGUSR1, signal_handler)
+        os.kill(self.parent_pid, signal.SIGUSR1)
+        t1 = time.perf_counter_ns()
+        signal.pause()
         for k, sparse_index_group_batch in enumerate(lS_i):   
             sparse_offset_group_batch = lS_o[k]
             
@@ -417,19 +424,18 @@ class DLRM_Net(nn.Module):
 
                 ly.append(QV)
             else:
-                os.kill(self.parent_pid, signal.SIGUSR1)
-                signal.pause()
                 E = emb_l[k]
                 V = E(
                     sparse_index_group_batch,
                     sparse_offset_group_batch,
                     per_sample_weights=per_sample_weights,
                 )
-                os.kill(self.parent_pid, signal.SIGUSR1)
-                signal.pause()
                 ly.append(V)
-
-        # print(ly)
+        t2 = time.perf_counter_ns()
+        os.kill(self.parent_pid, signal.SIGUSR1)
+        signal.pause()
+        with open('/dev/shm/times', 'a') as f:
+            f.write(f"{t2-t1}\n")
         return ly
 
     #  using quantizing functions from caffe2/aten/src/ATen/native/quantized/cpu
@@ -912,7 +918,7 @@ def run():
     parser.add_argument("--round-targets", type=bool, default=True)
     # data
     parser.add_argument("--data-size", type=int, default=1)
-    parser.add_argument("--num-batches", type=int, default=1e6) # was 0
+    parser.add_argument("--num-batches", type=int, default=1e3) # was 0
     parser.add_argument(
         "--data-generation", type=str,choices=["random","dataset","internal"], default="dataset"
     )  # synthetic, dataset or internal
@@ -1512,9 +1518,7 @@ def run():
     #             device,
     #             use_gpu,
     #         )
-    # time_stamp = str(datetime.datetime.now()).replace(" ", "_")
-    # with open("o_dlrm_py" + time_stamp + ".prof", "w") as prof_f:
-    #     prof_f.write(prof.key_averages().table(sort_by="self_cpu_memory_usage"))    
+    # print(prof.key_averages().table(sort_by="self_cpu_memory_usage"))    
 
     # # profiling
     # if args.enable_profiling:
