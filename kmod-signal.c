@@ -179,18 +179,20 @@ void signal_handler(int signal_num)
         if (g_got_inputs == 0) {
             read_input_addrs(g_input_addrs);
             g_got_inputs = 1;
-        } else if (g_in_lookup == 0) {
-			g_in_lookup = 1;
-            g_num_lookups++;
-			clear_bits_for_lookups();
-        } else {
-            for (int i = 0; i < g_num_requests; i++) {
-                append_accessed_pages(i);
+        } else { // g_got_inputs = 1
+            if (g_in_lookup == 0) {
+                g_in_lookup = 1;
+                g_num_lookups++;
+                clear_bits_for_lookups();
+            } else {
+                for (int i = 0; i < g_num_requests; i++) {
+                    append_accessed_pages(i);
+                }
+                g_num_requests = 0;
+                g_in_lookup = 0;
             }
-            g_num_requests = 0;
-			g_in_lookup = 0;
+            kill(g_pid, SIGUSR1);
         }
-		kill(g_pid, SIGUSR1);
     }
 }
 
