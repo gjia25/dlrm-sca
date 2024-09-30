@@ -54,8 +54,12 @@ static int clear_accessed_bits(struct mm_struct *mm, unsigned long start, unsign
     pte_t *pte;
 
     for (vma = find_vma(mm, start); vma && vma->vm_start < end; vma = vma->vm_next) {
+        printk(KERN_INFO "Processing %lx-%lx (out of %lx-%lx)", vma_start, vma_end, start, end);
         unsigned long vma_start = max(vma->vm_start, start);
         unsigned long vma_end = min(vma->vm_end, end);
+
+        flush_cache_range(vma, vma_start, vma_end);
+        printk(KERN_INFO "Cleared cache range for %lx-%lx", vma_start, vma_end);
 
         for (addr = vma_start; addr < vma_end; addr += PAGE_SIZE) {
             pgd = pgd_offset(mm, addr);
@@ -87,9 +91,6 @@ static int clear_accessed_bits(struct mm_struct *mm, unsigned long start, unsign
 
             pte_unmap(pte);
         }
-
-        flush_cache_range(vma, vma_start, vma_end);
-        printk(KERN_INFO "Cleared cache range for %lx-%lx", vma_start, vma_end);
         flush_tlb_mm_range_stolen(mm, start, end, PAGE_SHIFT, false);
         printk(KERN_INFO "Cleared TLB range for %lx-%lx", start, end);
     }
