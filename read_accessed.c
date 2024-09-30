@@ -94,7 +94,7 @@ static ssize_t read_accessed_write(struct file *file, const char __user *buffer,
     if (copy_from_user(&req, buffer, count))
         return -EFAULT;
 
-    printk(KERN_INFO "read_accessed: Received request for %lx-%lx\n", req.start_vaddr, req.end_vaddr);
+    // printk(KERN_INFO "read_accessed: Received request for %lx-%lx\n", req.start_vaddr, req.end_vaddr);
     rcu_read_lock();
     task = pid_task(find_vpid(req.pid), PIDTYPE_PID);
     if (!task) {
@@ -116,12 +116,12 @@ static ssize_t read_accessed_write(struct file *file, const char __user *buffer,
 }
 
 static ssize_t read_accessed_read(struct file *file, char __user *buffer, size_t count, loff_t *pos) {
-    printk(KERN_INFO "read_accessed: count=%d, pos=%ld\n", count, *pos);
+    // printk(KERN_INFO "read_accessed: count=%d, pos=%ld\n", count, *pos);
     size_t res_len = result_count * sizeof(struct result_entry);
-    printk(KERN_INFO "read_accessed: %d bytes to read (%d results)\n", res_len, result_count);
+    // printk(KERN_INFO "read_accessed: %d bytes to read (%d results)\n", res_len, result_count);
     if (*pos >= res_len){
         *pos = 0;
-        printk(KERN_INFO "read_accessed: reset offset\n");
+        // printk(KERN_INFO "read_accessed: reset offset\n");
         return 0;
     }
     if (count > res_len - *pos)
@@ -131,7 +131,7 @@ static ssize_t read_accessed_read(struct file *file, char __user *buffer, size_t
         return -EFAULT;
 
     *pos += count;
-    printk(KERN_INFO "read_accessed: %d / %d bytes read\n", count, res_len);
+    // printk(KERN_INFO "read_accessed: %d / %d bytes read\n", count, res_len);
     return count;
 }
 
