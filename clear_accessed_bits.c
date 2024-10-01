@@ -10,6 +10,35 @@
 #include <linux/rwsem.h>
 #include <linux/mm_types.h>
 
+#include <linux/moduleparam.h> /* which will have params */ 
+#include <linux/kallsyms.h> /* For sprint_symbol */ 
+static unsigned long sym = 0; 
+module_param(sym, ulong, 0644);
+
+static void (*flush_tlb_mm_range_stolen)(struct mm_struct *, unsigned long, unsigned long, unsigned int, bool); 
+
+static void *acquire_flush_tlb_mm_range(void) 
+{
+    const char sct_name[15] = "flush_tlb_mm_range"; 
+    char symbol[40] = { 0 }; 
+ 
+    if (sym == 0) { 
+        pr_alert("For Linux v5.7+, Kprobes is the preferable way to get " 
+                 "symbol.\n"); 
+        pr_info("If Kprobes is absent, you have to specify the address of " 
+                "flush_tlb_mm_range symbol\n"); 
+        pr_info("by /boot/System.map or /proc/kallsyms, which contains all the " 
+                "symbol addresses, into sym parameter.\n"); 
+        return NULL; 
+    } 
+
+    sprint_symbol(symbol, sym); 
+
+    if (!strncmp(sct_name, symbol, sizeof(sct_name) - 1)) 
+        return (void *)sym; 
+    return NULL; 
+} 
+
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Clarity");
 MODULE_DESCRIPTION("A module to clear accessed bits of PTEs for a given address range");
@@ -61,6 +90,8 @@ static int clear_accessed_bits(struct mm_struct *mm, unsigned long start, unsign
 
         flush_cache_range(vma, vma_start, vma_end);
         printk(KERN_INFO "Cleared cache range for %lx-%lx", vma_start, vma_end);
+        flush_tlb_mm_range_stolen(mm, start, end, PAGE_SHIFT, false);
+        printk(KERN_INFO "Cleared TLB range for %lx-%lx", start, end);
     }
     return 0;
 }
@@ -112,6 +143,8 @@ static int __init clear_accessed_bits_init(void)
 {
     proc_create("clear_accessed_bits", 0666, NULL, &proc_fops);
     printk(KERN_INFO "Initializing clear accessed bits module\n");
+    if (!(flush_tlb_mm_range_stolen = acquire_flush_tlb_mm_range())) 
+        return -1;
     return 0;
 }
 
