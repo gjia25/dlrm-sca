@@ -44,8 +44,12 @@ struct result_entry {
 
 // globals
 char *g_outdir = "/run/user/1000/dlrm-sca";
+char *g_timefile = "/run/user/1000/dlrm-sca/times";
 unsigned long g_input_addrs[NUM_FEATURES];
 static struct timeval g_ts0;
+static struct timeval g_ts_start;
+static struct timeval g_ts_end;
+static unsigned long long dur_request;
 int g_got_inputs = 0;
 int g_in_lookup = 0;
 int g_num_lookups = 0;
@@ -116,7 +120,7 @@ void clear_bits_for_lookups() {
     for (int i = 0; i < NUM_FEATURES; i++) {
         start = g_input_addrs[i] & 0xFFFFFFFFFFFFF000;
         end = (g_input_addrs[i] + EMB_SIZE * SIZE_LIST[i]) & 0xFFFFFFFFFFFFF000;
-        printf("Clearing accessed bits for %lx-%lx", start, end);
+        // printf("Clearing accessed bits for %lx-%lx", start, end);
         clear_accessed_bits(start, end);
     }
 
@@ -175,12 +179,14 @@ void append_accessed_pages(int request_idx) {
 // parent reads page table entry flags, then sends SIGUSR1 back to child
 void signal_handler(int signal_num)
 {
+    FILE *file;
     if (signal_num == SIGUSR1) {
         if (g_got_inputs == 0) {
             read_input_addrs(g_input_addrs);
             g_got_inputs = 1;
         } else { // g_got_inputs = 1
             if (g_in_lookup == 0) {
+                gettimeofday(&g_ts_start, NULL); // start of inference request
                 g_in_lookup = 1;
                 g_num_lookups++;
                 clear_bits_for_lookups();
@@ -190,6 +196,16 @@ void signal_handler(int signal_num)
                 }
                 g_num_requests = 0;
                 g_in_lookup = 0;
+                gettimeofday(&g_ts_end, NULL); // end of inference request
+                dur_request = 1000000 * (g_ts_end.tv_sec - g_ts_start.tv_sec) + (g_ts_end.tv_usec - g_ts_start.tv_usec);
+                // record duration of inference request (between signals)
+                file = fopen(g_timefile, "a");
+                if (file == NULL) {
+                    perror("Unable to open timefile");
+                    exit(EXIT_FAILURE);
+                }
+                fprintf(file, "%llu\n", dur_request);
+                fclose(file);
             }
             kill(g_pid, SIGUSR1);
         }

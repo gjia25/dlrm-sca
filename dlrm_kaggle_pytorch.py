@@ -430,10 +430,10 @@ class DLRM_Net(nn.Module):
                     sparse_offset_group_batch,
                     per_sample_weights=per_sample_weights,
                 )
-                ly.append(V)
-        t2 = time.perf_counter_ns()
+                ly.append(V) 
         os.kill(self.parent_pid, signal.SIGUSR1)
         signal.pause()
+        t2 = time.perf_counter_ns()
         with open('/dev/shm/times', 'a') as f:
             f.write(f"{t2-t1}\n")
         return ly
@@ -918,7 +918,7 @@ def run():
     parser.add_argument("--round-targets", type=bool, default=True)
     # data
     parser.add_argument("--data-size", type=int, default=1)
-    parser.add_argument("--num-batches", type=int, default=1e3) # was 0
+    parser.add_argument("--num-batches", type=int, default=1e5) # was 0
     parser.add_argument(
         "--data-generation", type=str,choices=["random","dataset","internal"], default="dataset"
     )  # synthetic, dataset or internal
