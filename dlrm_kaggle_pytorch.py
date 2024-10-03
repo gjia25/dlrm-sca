@@ -385,9 +385,10 @@ class DLRM_Net(nn.Module):
 
         ly = [] 
         signal.signal(signal.SIGUSR1, signal_handler)
+        t_clearsig_start = time.time_ns()
         os.kill(self.parent_pid, signal.SIGUSR1)
-        t1 = time.perf_counter_ns()
         signal.pause()
+        t_clearsig_end = time.time_ns()
         for k, sparse_index_group_batch in enumerate(lS_i):   
             sparse_offset_group_batch = lS_o[k]
             
@@ -430,12 +431,17 @@ class DLRM_Net(nn.Module):
                     sparse_offset_group_batch,
                     per_sample_weights=per_sample_weights,
                 )
-                ly.append(V) 
+                ly.append(V)
+        t_readsig_start = time.time_ns() 
         os.kill(self.parent_pid, signal.SIGUSR1)
         signal.pause()
-        t2 = time.perf_counter_ns()
-        with open('/dev/shm/times', 'a') as f:
-            f.write(f"{t2-t1}\n")
+        t_readsig_end = time.time_ns()
+        global clearsig_time
+        global lookup_time
+        global readsig_time
+        clearsig_time = t_clearsig_end - t_clearsig_start
+        lookup_time = t_readsig_start - t_clearsig_end
+        readsig_time = t_readsig_end - t_readsig_start
         return ly
 
     #  using quantizing functions from caffe2/aten/src/ATen/native/quantized/cpu
@@ -758,7 +764,9 @@ def inference(
         # early exit if nbatches was set by the user and was exceeded
         if nbatches > 0 and i >= nbatches:
             break
-
+        
+        t_start = time.time_ns()
+        
         X_test, lS_o_test, lS_i_test, T_test, W_test, CBPP_test = unpack_batch(
             testBatch
         )
@@ -784,7 +792,13 @@ def inference(
         (_, batch_split_lengths) = ext_dist.get_split_lengths(X_test.size(0))
         if ext_dist.my_size > 1:
             Z_test = ext_dist.all_gather(Z_test, batch_split_lengths)
+        
+        t_end = time.time_ns()
+        inf_time = t_end - t_start
 
+        with open('/dev/shm/times', 'a') as f:
+            f.write(f"{clearsig_time},{lookup_time},{readsig_time},{inf_time}\n")
+        
         if args.mlperf_logging:
             S_test = Z_test.detach().cpu().numpy()  # numpy array
             T_test = T_test.detach().cpu().numpy()  # numpy array
