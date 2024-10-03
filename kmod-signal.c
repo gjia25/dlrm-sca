@@ -49,7 +49,8 @@ unsigned long g_input_addrs[NUM_FEATURES];
 static struct timeval g_ts0;
 static struct timeval g_ts_start;
 static struct timeval g_ts_end;
-static unsigned long long dur_request;
+static unsigned long long dur_clear;
+static unsigned long long dur_read;
 int g_got_inputs = 0;
 int g_in_lookup = 0;
 int g_num_lookups = 0;
@@ -186,25 +187,27 @@ void signal_handler(int signal_num)
             g_got_inputs = 1;
         } else { // g_got_inputs = 1
             if (g_in_lookup == 0) {
-                gettimeofday(&g_ts_start, NULL); // start of inference request
+                gettimeofday(&g_ts_start, NULL);
                 g_in_lookup = 1;
                 g_num_lookups++;
                 clear_bits_for_lookups();
+                gettimeofday(&g_ts_end, NULL);
+                dur_read = 1000000 * (g_ts_end.tv_sec - g_ts_start.tv_sec) + (g_ts_end.tv_usec - g_ts_start.tv_usec);
             } else {
+                gettimeofday(&g_ts_start, NULL);
                 for (int i = 0; i < g_num_requests; i++) {
                     append_accessed_pages(i);
                 }
                 g_num_requests = 0;
                 g_in_lookup = 0;
-                gettimeofday(&g_ts_end, NULL); // end of inference request
-                dur_request = 1000000 * (g_ts_end.tv_sec - g_ts_start.tv_sec) + (g_ts_end.tv_usec - g_ts_start.tv_usec);
-                // record duration of inference request (between signals)
+                gettimeofday(&g_ts_end, NULL);
+                dur_clear = 1000000 * (g_ts_end.tv_sec - g_ts_start.tv_sec) + (g_ts_end.tv_usec - g_ts_start.tv_usec);
                 file = fopen(g_timefile, "a");
                 if (file == NULL) {
                     perror("Unable to open timefile");
                     exit(EXIT_FAILURE);
                 }
-                fprintf(file, "%llu\n", dur_request);
+                fprintf(file, "%llu,%llu\n", dur_clear, dur_read);
                 fclose(file);
             }
             kill(g_pid, SIGUSR1);
